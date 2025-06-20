@@ -1,0 +1,78 @@
+{
+  "name": "Crest Documentation",
+  "logo": {
+    "dark": "/assets/logo.svg",
+    "light": "/assets/logo.svg"
+  },
+  "favicon": "/assets/favicon.svg",
+  "colors": {
+    "primary": "#FF6B35",
+    "light": "#FFB4A6",
+    "dark": "#CC5429",
+    "anchors": {
+      "from": "#FF6B35",
+      "to": "#FFB4A6"
+    }
+  },
+  "topbarLinks": [
+    {
+      "name": "GitHub",
+      "url": "https://github.com/crest-bitcoin"
+    }
+  ],
+  "topbarCtaButton": {
+    "name": "Launch App",
+    "url": "https://crestapp.xyz"
+  },
+  "anchors": [
+    {
+      "name": "X/Twitter",
+      "icon": "twitter",
+      "url": "https://twitter.com/crest_btc"
+    }
+  ],
+  "navigation": [
+    {
+      "group": "Introduction",
+      "pages": [
+        "introduction/overview",
+        "introduction/how-it-works",
+        "introduction/user-flow"
+      ]
+    },
+    {
+      "group": "Architecture",
+      "pages": [
+        "architecture/rfq-system",
+        "architecture/smart-contracts",
+        "architecture/citrea-integration"
+      ]
+    },
+    {
+      "group": "Smart Contracts",
+      "pages": [
+        "contracts/overview",
+        "contracts/settlement",
+        "contracts/wcbtc"
+      ]
+    },
+    {
+      "group": "Trading Mechanisms",
+      "pages": [
+        "trading/rfqt",
+        "trading/rfqm",
+        "trading/fees"
+      ]
+    },
+    {
+      "group": "Integration",
+      "pages": [
+        "integration/market-makers"
+      ]
+    }
+  ],
+  "footerSocials": {
+    "twitter": "https://twitter.com/crest_btc",
+    "github": "https://github.com/crest-bitcoin"
+  }
+}

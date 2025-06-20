@@ -1,0 +1,26 @@
+{
+  "name": "crest-docs",
+  "version": "1.0.0",
+  "description": "Technical documentation for Crest - Self-custodial Bitcoin trading on Citrea",
+  "scripts": {
+    "dev": "mintlify dev",
+    "build": "mintlify build",
+    "preview": "mintlify preview"
+  },
+  "dependencies": {
+    "mintlify": "^4.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0"
+  },
+  "keywords": [
+    "bitcoin",
+    "citrea",
+    "rfq",
+    "defi",
+    "trading",
+    "documentation"
+  ],
+  "author": "Crest Protocol",
+  "license": "MIT"
+}

@@ -1,0 +1,705 @@
+---
+title: "Contract Deployment"
+description: "Complete guide to deploying and verifying Crest smart contracts on Citrea"
+---
+
+# Contract Deployment
+
+This guide covers the complete process of deploying Crest's smart contracts to Citrea, including setup, deployment scripts, verification, and post-deployment configuration.
+
+## Prerequisites
+
+### Development Environment Setup
+
+<Tabs>
+  <Tab title="Node.js & npm">
+    ```bash
+    # Install Node.js (v18+ recommended)
+    node --version
+    npm --version
+
+    # Install project dependencies
+    cd crest-contracts
+    npm install
+    ```
+  </Tab>
+  <Tab title="Hardhat Configuration">
+    ```typescript
+    // hardhat.config.ts
+    import { HardhatUserConfig } from "hardhat/config";
+    import "@nomicfoundation/hardhat-toolbox";
+    import "hardhat-deploy";
+
+    const config: HardhatUserConfig = {
+      solidity: {
+        version: "0.8.19",
+        settings: {
+          optimizer: {
+            enabled: true,
+            runs: 200
+          }
+        }
+      },
+      networks: {
+        citrea: {
+          url: "https://rpc.devnet.citrea.xyz",
+          accounts: [process.env.PRIVATE_KEY!],
+          chainId: 5115,
+          gasPrice: 1000000000, // 1 gwei
+        },
+        citreaTestnet: {
+          url: "https://rpc.testnet.citrea.xyz",
+          accounts: [process.env.PRIVATE_KEY!],
+          chainId: 62298
+        }
+      },
+      etherscan: {
+        apiKey: {
+          citrea: process.env.CITREA_API_KEY || "dummy"
+        },
+        customChains: [
+          {
+            network: "citrea",
+            chainId: 5115,
+            urls: {
+              apiURL: "https://explorer.devnet.citrea.xyz/api",
+              browserURL: "https://explorer.devnet.citrea.xyz"
+            }
+          }
+        ]
+      }
+    };
+
+    export default config;
+    ```
+  </Tab>
+  <Tab title="Environment Variables">
+    ```bash
+    # .env file
+    PRIVATE_KEY=your_private_key_here
+    CITREA_RPC_URL=https://rpc.devnet.citrea.xyz
+    CITREA_API_KEY=your_explorer_api_key
+
+    # For mainnet deployment
+    MAINNET_PRIVATE_KEY=your_mainnet_private_key
+    MAINNET_RPC_URL=https://rpc.citrea.xyz
+    ```
+  </Tab>
+</Tabs>
+
+### Wallet Setup
+
+```bash
+# Ensure you have cBTC for gas fees
+# Minimum: 0.01 cBTC for deployment costs
+# Recommended: 0.1 cBTC for multiple deployments and testing
+
+# Check balance
+cast balance $YOUR_ADDRESS --rpc-url https://rpc.devnet.citrea.xyz
+```
+
+## Deployment Scripts
+
+### 1. WCBTC Contract Deployment
+
+```typescript
+// scripts/deploy-wcbtc.ts
+import { ethers } from "hardhat";
+import { verify } from "../utils/verify";
+
+async function deployWCBTC() {
+  console.log("🚀 Deploying WCBTC contract...");
+
+  const [deployer] = await ethers.getSigners();
+  console.log("Deploying with account:", deployer.address);
+  console.log("Account balance:", (await deployer.getBalance()).toString());
+
+  // Deploy WCBTC
+  const WCBTC = await ethers.getContractFactory("WCBTC");
+  const wcbtc = await WCBTC.deploy();
+  await wcbtc.deployed();
+
+  console.log("✅ WCBTC deployed to:", wcbtc.address);
+  console.log("Transaction hash:", wcbtc.deployTransaction.hash);
+
+  // Wait for block confirmations
+  console.log("⏳ Waiting for block confirmations...");
+  await wcbtc.deployTransaction.wait(5);
+
+  // Verify contract
+  if (process.env.CITREA_API_KEY) {
+    console.log("🔍 Verifying contract...");
+    await verify(wcbtc.address, []);
+  }
+
+  return wcbtc.address;
+}
+
+deployWCBTC()
+  .then(() => process.exit(0))
+  .catch((error) => {
+    console.error(error);
+    process.exit(1);
+  });
+```
+
+### 2. Settlement Contract Deployment
+
+```typescript
+// scripts/deploy-settlement.ts
+import { ethers } from "hardhat";
+import { verify } from "../utils/verify";
+
+async function deploySettlement() {
+  console.log("🚀 Deploying Settlement contract...");
+
+  const [deployer] = await ethers.getSigners();
+  console.log("Deploying with account:", deployer.address);
+
+  // Configuration
+  const WCBTC_ADDRESS = process.env.WCBTC_ADDRESS || "";
+  const INITIAL_FEE_BASIS_POINTS = 30; // 0.3%
+
+  if (!WCBTC_ADDRESS) {
+    throw new Error("WCBTC_ADDRESS not provided");
+  }
+
+  // Deploy Settlement
+  const Settlement = await ethers.getContractFactory("Settlement");
+  const settlement = await Settlement.deploy(
+    WCBTC_ADDRESS,
+    INITIAL_FEE_BASIS_POINTS
+  );
+  await settlement.deployed();
+
+  console.log("✅ Settlement deployed to:", settlement.address);
+  console.log("Parameters:");
+  console.log("  - WCBTC Address:", WCBTC_ADDRESS);
+  console.log("  - Initial Fee:", INITIAL_FEE_BASIS_POINTS, "basis points");
+
+  // Wait for confirmations
+  await settlement.deployTransaction.wait(5);
+
+  // Verify contract
+  if (process.env.CITREA_API_KEY) {
+    console.log("🔍 Verifying contract...");
+    await verify(settlement.address, [WCBTC_ADDRESS, INITIAL_FEE_BASIS_POINTS]);
+  }
+
+  return settlement.address;
+}
+
+deploySettlement()
+  .then(() => process.exit(0))
+  .catch((error) => {
+    console.error(error);
+    process.exit(1);
+  });
+```
+
+### 3. Complete Deployment Script
+
+```typescript
+// scripts/deploy.ts - Complete deployment
+import { ethers } from "hardhat";
+import { verify } from "../utils/verify";
+import fs from "fs";
+
+interface DeploymentResult {
+  wcbtc: string;
+  settlement: string;
+  deployer: string;
+  network: string;
+  timestamp: number;
+}
+
+async function main() {
+  const [deployer] = await ethers.getSigners();
+  const network = await ethers.provider.getNetwork();
+
+  console.log("🚀 Starting complete Crest deployment");
+  console.log("Network:", network.name, "(", network.chainId, ")");
+  console.log("Deployer:", deployer.address);
+  console.log("Balance:", ethers.utils.formatEther(await deployer.getBalance()), "cBTC");
+
+  const result: DeploymentResult = {
+    wcbtc: "",
+    settlement: "",
+    deployer: deployer.address,
+    network: network.name,
+    timestamp: Date.now()
+  };
+
+  try {
+    // 1. Deploy WCBTC
+    console.log("\n📦 Step 1: Deploying WCBTC...");
+    const WCBTC = await ethers.getContractFactory("WCBTC");
+    const wcbtc = await WCBTC.deploy();
+    await wcbtc.deployed();
+
+    result.wcbtc = wcbtc.address;
+    console.log("✅ WCBTC deployed:", wcbtc.address);
+
+    // 2. Deploy Settlement
+    console.log("\n📦 Step 2: Deploying Settlement...");
+    const Settlement = await ethers.getContractFactory("Settlement");
+    const settlement = await Settlement.deploy(wcbtc.address, 30); // 0.3% fee
+    await settlement.deployed();
+
+    result.settlement = settlement.address;
+    console.log("✅ Settlement deployed:", settlement.address);
+
+    // 3. Wait for confirmations
+    console.log("\n⏳ Waiting for block confirmations...");
+    await Promise.all([
+      wcbtc.deployTransaction.wait(5),
+      settlement.deployTransaction.wait(5)
+    ]);
+
+    // 4. Verify contracts
+    if (process.env.CITREA_API_KEY) {
+      console.log("\n🔍 Verifying contracts...");
+
+      try {
+        await verify(wcbtc.address, []);
+        console.log("✅ WCBTC verified");
+      } catch (error) {
+        console.log("❌ WCBTC verification failed:", error.message);
+      }
+
+      try {
+        await verify(settlement.address, [wcbtc.address, 30]);
+        console.log("✅ Settlement verified");
+      } catch (error) {
+        console.log("❌ Settlement verification failed:", error.message);
+      }
+    }
+
+    // 5. Save deployment info
+    const deploymentFile = `deployments/${network.name}-${Date.now()}.json`;
+    fs.mkdirSync("deployments", { recursive: true });
+    fs.writeFileSync(deploymentFile, JSON.stringify(result, null, 2));
+
+    console.log("\n🎉 Deployment completed successfully!");
+    console.log("Deployment info saved to:", deploymentFile);
+
+    // 6. Display summary
+    displayDeploymentSummary(result);
+
+  } catch (error) {
+    console.error("\n❌ Deployment failed:", error);
+    process.exit(1);
+  }
+}
+
+function displayDeploymentSummary(result: DeploymentResult) {
+  console.log("\n📋 DEPLOYMENT SUMMARY");
+  console.log("═".repeat(50));
+  console.log("Network:", result.network);
+  console.log("Deployer:", result.deployer);
+  console.log("WCBTC:", result.wcbtc);
+  console.log("Settlement:", result.settlement);
+  console.log("Timestamp:", new Date(result.timestamp).toISOString());
+  console.log("═".repeat(50));
+
+  console.log("\n🔧 Next steps:");
+  console.log("1. Update frontend config with contract addresses");
+  console.log("2. Configure relayer with Settlement address");
+  console.log("3. Set up monitoring and analytics");
+  console.log("4. Fund Settlement contract if needed");
+}
+
+main().catch(console.error);
+```
+
+## Verification Utilities
+
+```typescript
+// utils/verify.ts
+import { run } from "hardhat";
+
+export async function verify(contractAddress: string, args: any[]) {
+  try {
+    await run("verify:verify", {
+      address: contractAddress,
+      constructorArguments: args,
+    });
+    console.log("Contract verified successfully");
+  } catch (error) {
+    if (error.message.toLowerCase().includes("already verified")) {
+      console.log("Contract already verified");
+    } else {
+      console.error("Verification failed:", error.message);
+      throw error;
+    }
+  }
+}
+```
+
+## Deployment Commands
+
+### Local Testing
+
+```bash
+# Compile contracts
+npm run compile
+
+# Run tests
+npm run test
+
+# Deploy to local network
+npx hardhat node
+npx hardhat run scripts/deploy.ts --network localhost
+```
+
+### Testnet Deployment
+
+```bash
+# Deploy to Citrea testnet
+npx hardhat run scripts/deploy.ts --network citreaTestnet
+
+# Verify specific contract
+npx hardhat verify --network citreaTestnet CONTRACT_ADDRESS "constructor" "arguments"
+
+# Check deployment
+npx hardhat run scripts/verify-deployment.ts --network citreaTestnet
+```
+
+### Mainnet Deployment
+
+<Warning>
+**Critical Security Steps for Mainnet**
+
+1. Use a hardware wallet or secure key management
+2. Double-check all constructor parameters
+3. Test on testnet first
+4. Have emergency procedures ready
+5. Ensure sufficient cBTC for gas fees
+</Warning>
+
+```bash
+# Set production environment
+export NODE_ENV=production
+export PRIVATE_KEY=$MAINNET_PRIVATE_KEY
+
+# Deploy with extra confirmations
+npx hardhat run scripts/deploy.ts --network citrea
+
+# Verify deployment
+npx hardhat run scripts/post-deployment-checks.ts --network citrea
+```
+
+## Post-Deployment Configuration
+
+### 1. Contract Initialization
+
+```typescript
+// scripts/initialize-contracts.ts
+async function initializeContracts() {
+  const [deployer] = await ethers.getSigners();
+
+  // Get deployed contracts
+  const settlement = await ethers.getContractAt("Settlement", SETTLEMENT_ADDRESS);
+  const wcbtc = await ethers.getContractAt("WCBTC", WCBTC_ADDRESS);
+
+  console.log("🔧 Initializing contracts...");
+
+  // 1. Configure Settlement contract
+  if (process.env.NODE_ENV === "production") {
+    // Set production fee rate if different
+    const currentFee = await settlement.feeBasisPoints();
+    if (currentFee.toNumber() !== 30) {
+      console.log("Setting production fee rate...");
+      await settlement.setFeeBasisPoints(30);
+    }
+  }
+
+  // 2. Transfer ownership if needed
+  const currentOwner = await settlement.owner();
+  if (currentOwner !== deployer.address) {
+    console.log("Transferring ownership...");
+    await settlement.transferOwnership(MULTISIG_ADDRESS);
+  }
+
+  console.log("✅ Contracts initialized");
+}
+```
+
+### 2. ABI Generation
+
+```typescript
+// scripts/generate-abis.ts
+import fs from "fs";
+import path from "path";
+
+async function generateABIs() {
+  const artifactsDir = "./artifacts/contracts";
+  const abiDir = "../abis";
+
+  // Ensure ABI directory exists
+  fs.mkdirSync(abiDir, { recursive: true });
+
+  // Generate Settlement ABI
+  const settlementArtifact = require(`${artifactsDir}/Settlement.sol/Settlement.json`);
+  fs.writeFileSync(
+    path.join(abiDir, "settlement-abi.json"),
+    JSON.stringify(settlementArtifact.abi, null, 2)
+  );
+
+  // Generate WCBTC ABI
+  const wcbtcArtifact = require(`${artifactsDir}/WCBTC.sol/WCBTC.json`);
+  fs.writeFileSync(
+    path.join(abiDir, "wcbtc-abi.json"),
+    JSON.stringify(wcbtcArtifact.abi, null, 2)
+  );
+
+  console.log("✅ ABIs generated in", abiDir);
+}
+```
+
+### 3. Configuration Files
+
+```typescript
+// scripts/generate-config.ts
+interface ContractConfig {
+  networkId: number;
+  networkName: string;
+  contracts: {
+    settlement: string;
+    wcbtc: string;
+  };
+  rpcUrl: string;
+  explorerUrl: string;
+}
+
+async function generateConfig() {
+  const network = await ethers.provider.getNetwork();
+
+  const config: ContractConfig = {
+    networkId: network.chainId,
+    networkName: network.name,
+    contracts: {
+      settlement: process.env.SETTLEMENT_ADDRESS!,
+      wcbtc: process.env.WCBTC_ADDRESS!
+    },
+    rpcUrl: process.env.CITREA_RPC_URL!,
+    explorerUrl: `https://explorer.${network.name}.citrea.xyz`
+  };
+
+  // Save for frontend
+  fs.writeFileSync(
+    "../crest-frontend/src/config/contracts.json",
+    JSON.stringify(config, null, 2)
+  );
+
+  // Save for relayer
+  fs.writeFileSync(
+    "../crest-relayer/config/contracts.json",
+    JSON.stringify(config, null, 2)
+  );
+
+  console.log("✅ Configuration files generated");
+}
+```
+
+## Monitoring & Health Checks
+
+### Deployment Verification Script
+
+```typescript
+// scripts/verify-deployment.ts
+async function verifyDeployment() {
+  console.log("🔍 Verifying deployment health...");
+
+  const settlement = await ethers.getContractAt("Settlement", SETTLEMENT_ADDRESS);
+  const wcbtc = await ethers.getContractAt("WCBTC", WCBTC_ADDRESS);
+
+  // 1. Check contract deployment
+  const settlementCode = await ethers.provider.getCode(SETTLEMENT_ADDRESS);
+  const wcbtcCode = await ethers.provider.getCode(WCBTC_ADDRESS);
+
+  console.log("Settlement contract deployed:", settlementCode !== "0x");
+  console.log("WCBTC contract deployed:", wcbtcCode !== "0x");
+
+  // 2. Check contract configuration
+  const wcbtcAddress = await settlement.wcbtc();
+  const feeBasisPoints = await settlement.feeBasisPoints();
+  const owner = await settlement.owner();
+
+  console.log("WCBTC address matches:", wcbtcAddress === WCBTC_ADDRESS);
+  console.log("Fee basis points:", feeBasisPoints.toString());
+  console.log("Contract owner:", owner);
+
+  // 3. Test basic functionality
+  try {
+    const domain = await settlement.DOMAIN_SEPARATOR();
+    console.log("EIP712 domain separator:", domain);
+  } catch (error) {
+    console.error("❌ EIP712 setup failed:", error.message);
+  }
+
+  // 4. Check WCBTC functionality
+  try {
+    const name = await wcbtc.name();
+    const symbol = await wcbtc.symbol();
+    console.log("WCBTC name:", name);
+    console.log("WCBTC symbol:", symbol);
+  } catch (error) {
+    console.error("❌ WCBTC basic calls failed:", error.message);
+  }
+
+  console.log("✅ Deployment verification complete");
+}
+```
+
+## Gas Optimization
+
+### Deployment Gas Costs
+
+<CardGroup cols={2}>
+  <Card title="WCBTC Contract" icon="coins">
+    **Deployment Cost**: ~500K gas (~$0.50 on Citrea)
+
+    Simple contract with minimal functionality
+  </Card>
+  <Card title="Settlement Contract" icon="handshake">
+    **Deployment Cost**: ~3.5M gas (~$3.50 on Citrea)
+
+    Complex contract with EIP712, access control, and settlement logic
+  </Card>
+</CardGroup>
+
+### Optimization Strategies
+
+```typescript
+// Deployment with optimized gas settings
+const settlement = await Settlement.deploy(wcbtcAddress, feeBasisPoints, {
+  gasLimit: 4000000,  // Set explicit gas limit
+  gasPrice: ethers.utils.parseUnits("1", "gwei"), // Low gas price for Citrea
+  type: 2, // EIP-1559 transaction
+  maxFeePerGas: ethers.utils.parseUnits("2", "gwei"),
+  maxPriorityFeePerGas: ethers.utils.parseUnits("1", "gwei")
+});
+```
+
+## Troubleshooting
+
+### Common Issues
+
+<AccordionGroup>
+  <Accordion title="Deployment Fails with 'Out of Gas'">
+    ```bash
+    # Increase gas limit
+    npx hardhat run scripts/deploy.ts --network citrea --gas-limit 5000000
+
+    # Or set in hardhat.config.ts
+    networks: {
+      citrea: {
+        gas: 5000000,
+        gasPrice: 1000000000
+      }
+    }
+    ```
+  </Accordion>
+
+  <Accordion title="Verification Fails">
+    ```bash
+    # Manual verification with exact parameters
+    npx hardhat verify --network citrea 0x... "0x..." 30
+
+    # Check if contract is already verified
+    # Sometimes verification succeeds but shows error
+    ```
+  </Accordion>
+
+  <Accordion title="Constructor Parameter Mismatch">
+    ```typescript
+    // Ensure exact parameter matching for verification
+    const constructorArgs = [
+      wcbtcAddress,  // Must be exact address
+      30             // Must be exact number, not string
+    ];
+
+    await verify(settlement.address, constructorArgs);
+    ```
+  </Accordion>
+
+  <Accordion title="Network Connection Issues">
+    ```bash
+    # Test network connectivity
+    curl -X POST https://rpc.devnet.citrea.xyz \
+      -H "Content-Type: application/json" \
+      -d '{"jsonrpc":"2.0","method":"eth_blockNumber","params":[],"id":1}'
+
+    # Switch RPC endpoints if needed
+    export CITREA_RPC_URL=https://alternative-rpc.citrea.xyz
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Security Checklist
+
+### Pre-Deployment
+
+- [ ] Code review completed
+- [ ] Security audit performed
+- [ ] Test coverage >95%
+- [ ] Constructor parameters validated
+- [ ] Private keys secured
+- [ ] Network configuration verified
+
+### Post-Deployment
+
+- [ ] Contract addresses recorded
+- [ ] Ownership transferred to multisig
+- [ ] Fee parameters set correctly
+- [ ] Emergency pause mechanisms tested
+- [ ] Monitoring systems configured
+- [ ] Documentation updated
+
+## Integration with Frontend/Relayer
+
+### Frontend Configuration
+
+```typescript
+// Update frontend contract addresses
+// src/config/contracts.ts
+export const CONTRACTS = {
+  SETTLEMENT: "0x...", // Your deployed Settlement address
+  WCBTC: "0x...",      // Your deployed WCBTC address
+};
+
+export const NETWORK_CONFIG = {
+  chainId: 5115,
+  rpcUrl: "https://rpc.devnet.citrea.xyz",
+  explorerUrl: "https://explorer.devnet.citrea.xyz"
+};
+```
+
+### Relayer Configuration
+
+```typescript
+// Update relayer contract configuration
+// config/contracts.json
+{
+  "settlement": "0x...",
+  "wcbtc": "0x...",
+  "networkId": 5115,
+  "confirmations": 3
+}
+```
+
+## Next Steps
+
+After successful deployment:
+
+1. **Update Documentation** - Record all contract addresses and transaction hashes
+2. **Configure Monitoring** - Set up alerts for contract interactions
+3. **Test Integration** - Verify frontend and relayer connectivity
+4. **Security Audit** - Schedule post-deployment security review
+5. **Community Announcement** - Share deployment details with stakeholders
+
+For detailed contract functionality:
+- [Settlement Contract](/contracts/settlement) - Implementation details
+- [WCBTC Contract](/contracts/wcbtc) - Wrapper functionality
+- [Smart Contract Architecture](/architecture/smart-contracts) - Overall system design

@@ -1,0 +1,572 @@
+---
+title: "Settlement Contract"
+description: "Complete reference for the Settlement contract implementation"
+---
+
+# Settlement Contract
+
+The Settlement contract is the core of Crest's RFQ system, handling trustless settlement of trades between users and market makers. It supports both native cBTC and ERC20 tokens with two distinct execution modes: RFQ-T (Trader-initiated) and RFQ-M (Meta/Relayer-initiated).
+
+## Contract Overview
+
+```solidity
+contract Settlement is EIP712, Ownable, ReentrancyGuard {
+    using SafeERC20 for IERC20;
+    using ECDSA for bytes32;
+
+    // Native token constant for Citrea's cBTC
+    address public constant NATIVE_TOKEN = 0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE;
+
+    // Maximum fee of 10%
+    uint256 public constant MAX_FEE_BASIS_POINTS = 1000;
+
+    // WCBTC contract for native token wrapping
+    WCBTC public immutable wcbtc;
+
+    // Current protocol fee (default: 0.3%)
+    uint256 public feeBasisPoints = 30;
+}
+```
+
+## Core Data Structures
+
+### QuoteParams Struct
+```solidity
+struct QuoteParams {
+    address user;           // User's wallet address
+    address marketMaker;    // Market maker's address
+    address tokenIn;        // Input token contract address
+    address tokenOut;       // Output token contract address
+    uint256 amountIn;       // Input token amount
+    uint256 amountOut;      // Output token amount (MM's quote)
+    uint256 expiry;         // Quote expiration timestamp
+    bytes32 quoteId;        // Unique quote identifier
+}
+```
+
+### EIP-712 Signature Domain
+```solidity
+// Domain separator for EIP-712 signatures
+constructor(address _wcbtc) EIP712("Settlement", "1") Ownable(msg.sender) {
+    require(_wcbtc != address(0), "Invalid WCBTC address");
+    wcbtc = WCBTC(payable(_wcbtc));
+}
+
+// TypeHash for quote data
+bytes32 public constant QUOTE_TYPEHASH = keccak256(
+    "Quote(address user,address tokenIn,address tokenOut,uint256 amountIn,uint256 amountOut,uint256 expiry,bytes32 quoteId)"
+);
+```
+
+## Settlement Functions
+
+### RFQ-T: User-Initiated Settlement
+
+**Function Signature:**
+```solidity
+function settleRFQT(
+    QuoteParams calldata params,
+    bytes calldata marketMakerSignature
+) external payable nonReentrant
+```
+
+**Implementation:**
+```solidity
+function settleRFQT(
+    QuoteParams calldata params,
+    bytes calldata marketMakerSignature
+) external payable nonReentrant {
+    // User must be the transaction sender
+    require(params.user == msg.sender, "Sender must be the user");
+
+    // Validate the trade parameters and signature
+    _validateRFQT(params, marketMakerSignature);
+
+    // Execute the settlement
+    _executeRFQT(params);
+}
+```
+
+**Key Characteristics:**
+- **User pays gas**: Transaction sent directly by the user
+- **Native cBTC support**: Can accept native cBTC as input via `msg.value`
+- **Single signature**: Only market maker signature required
+- **Direct execution**: Immediate settlement on successful validation
+
+### RFQ-M: Relayer-Initiated Settlement
+
+**Function Signature:**
+```solidity
+function settleRFQM(
+    QuoteParams calldata params,
+    bytes calldata marketMakerSignature,
+    bytes calldata userSignature
+) external payable nonReentrant
+```
+
+**Implementation:**
+```solidity
+function settleRFQM(
+    QuoteParams calldata params,
+    bytes calldata marketMakerSignature,
+    bytes calldata userSignature
+) external payable nonReentrant {
+    // RFQ-M restriction: no native token input
+    require(params.tokenIn != NATIVE_TOKEN, "RFQM does not support native tokenIn");
+
+    // Validate with both signatures
+    _validateRFQM(params, marketMakerSignature, userSignature);
+
+    // Execute the settlement
+    _executeRFQM(params);
+}
+```
+
+**Key Characteristics:**
+- **Relayer pays gas**: Third party can execute on user's behalf
+- **ERC20 input only**: Native cBTC input not supported
+- **Dual signatures**: Both user and market maker signatures required
+- **Gas abstraction**: Users don't need to pay transaction fees
+
+## Settlement Execution Logic
+
+### RFQ-T Execution
+
+```solidity
+function _executeRFQT(QuoteParams memory params) private {
+    // Calculate protocol fee
+    (uint256 feeAmount, uint256 userReceiveAmount) = _calculateFee(params.amountOut);
+
+    // Handle input token transfer (user → market maker)
+    if (params.tokenIn == NATIVE_TOKEN) {
+        // Native cBTC input
+        require(msg.value == params.amountIn, "Incorrect cBTC amount");
+
+        // Wrap native cBTC into WCBTC
+        wcbtc.deposit{value: params.amountIn}();
+
+        // Transfer WCBTC to market maker
+        IERC20(address(wcbtc)).safeTransfer(params.marketMaker, params.amountIn);
+    } else {
+        // ERC20 input
+        IERC20(params.tokenIn).safeTransferFrom(
+            params.user,
+            params.marketMaker,
+            params.amountIn
+        );
+    }
+
+    // Handle output token transfer (market maker → user)
+    if (params.tokenOut == NATIVE_TOKEN) {
+        // Native cBTC output
+        IERC20(address(wcbtc)).safeTransferFrom(
+            params.marketMaker,
+            address(this),
+            params.amountOut
+        );
+
+        // Unwrap WCBTC to native cBTC
+        wcbtc.withdraw(params.amountOut);
+
+        // Send native cBTC to user (minus fee)
+        (bool success, ) = payable(params.user).call{value: userReceiveAmount}("");
+        require(success, "cBTC transfer to user failed");
+
+        // Collect protocol fee in native cBTC
+        if (feeAmount > 0) {
+            collectedFees[NATIVE_TOKEN] += feeAmount;
+        }
+    } else {
+        // ERC20 output
+        IERC20(params.tokenOut).safeTransferFrom(
+            params.marketMaker,
+            params.user,
+            userReceiveAmount
+        );
+
+        // Collect protocol fee from market maker
+        if (feeAmount > 0) {
+            IERC20(params.tokenOut).safeTransferFrom(
+                params.marketMaker,
+                address(this),
+                feeAmount
+            );
+            collectedFees[params.tokenOut] += feeAmount;
+        }
+    }
+
+    // Emit settlement event
+    emit RFQSettled(
+        params.quoteId,
+        params.user,
+        params.marketMaker,
+        params.tokenIn,
+        params.tokenOut,
+        params.amountIn,
+        params.amountOut,
+        true // isRFQT = true
+    );
+}
+```
+
+### RFQ-M Execution
+
+```solidity
+function _executeRFQM(QuoteParams memory params) private {
+    // Calculate protocol fee
+    (uint256 feeAmount, uint256 userReceiveAmount) = _calculateFee(params.amountOut);
+
+    // Transfer input tokens (user → market maker)
+    // Note: Only ERC20 supported for RFQ-M input
+    IERC20(params.tokenIn).safeTransferFrom(
+        params.user,
+        params.marketMaker,
+        params.amountIn
+    );
+
+    // Handle output token transfer (market maker → user)
+    if (params.tokenOut == NATIVE_TOKEN) {
+        // Native cBTC output handling (same as RFQ-T)
+        IERC20(address(wcbtc)).safeTransferFrom(
+            params.marketMaker,
+            address(this),
+            params.amountOut
+        );
+
+        wcbtc.withdraw(params.amountOut);
+
+        (bool success, ) = payable(params.user).call{value: userReceiveAmount}("");
+        require(success, "cBTC transfer to user failed");
+
+        if (feeAmount > 0) {
+            collectedFees[NATIVE_TOKEN] += feeAmount;
+        }
+    } else {
+        // ERC20 output (same as RFQ-T)
+        IERC20(params.tokenOut).safeTransferFrom(
+            params.marketMaker,
+            params.user,
+            userReceiveAmount
+        );
+
+        if (feeAmount > 0) {
+            IERC20(params.tokenOut).safeTransferFrom(
+                params.marketMaker,
+                address(this),
+                feeAmount
+            );
+            collectedFees[params.tokenOut] += feeAmount;
+        }
+    }
+
+    // Emit settlement event
+    emit RFQSettled(
+        params.quoteId,
+        params.user,
+        params.marketMaker,
+        params.tokenIn,
+        params.tokenOut,
+        params.amountIn,
+        params.amountOut,
+        false // isRFQT = false
+    );
+}
+```
+
+## Validation Logic
+
+### Quote Hash Generation
+
+```solidity
+function hashQuote(QuoteParams memory params) public view returns (bytes32) {
+    return _hashTypedDataV4(
+        keccak256(
+            abi.encode(
+                QUOTE_TYPEHASH,
+                params.user,
+                params.tokenIn,
+                params.tokenOut,
+                params.amountIn,
+                params.amountOut,
+                params.expiry,
+                params.quoteId
+            )
+        )
+    );
+}
+```
+
+### Multi-Type Signature Validation
+
+```solidity
+function validateSignature(
+    address signer,
+    bytes32 hash,
+    bytes memory signature
+) public view returns (bool) {
+    if (signature.length == 0) {
+        return false;
+    }
+
+    // Standard EOA signatures (65 bytes)
+    if (signature.length == 65) {
+        address recoveredSigner = hash.recover(signature);
+        return signer == recoveredSigner;
+    }
+    // EIP-1271 contract signatures
+    else if (signature.length >= 4) {
+        try IERC1271(signer).isValidSignature(hash, signature) returns (
+            bytes4 magicValue
+        ) {
+            return magicValue == EIP1271_MAGIC_VALUE;
+        } catch {
+            return false;
+        }
+    }
+
+    return false;
+}
+```
+
+### RFQ-T Validation
+
+```solidity
+function _validateRFQT(
+    QuoteParams memory params,
+    bytes calldata marketMakerSignature
+) private {
+    // Prevent replay attacks
+    require(!executedQuotes[params.quoteId], "Quote already executed");
+
+    // Ensure quote hasn't expired
+    require(block.timestamp <= params.expiry, "Quote expired");
+
+    // Generate quote hash
+    bytes32 quoteHash = hashQuote(params);
+
+    // Validate market maker's signature
+    require(
+        validateSignature(params.marketMaker, quoteHash, marketMakerSignature),
+        "Invalid market maker signature"
+    );
+
+    // Mark quote as executed to prevent reuse
+    executedQuotes[params.quoteId] = true;
+}
+```
+
+### RFQ-M Validation
+
+```solidity
+function _validateRFQM(
+    QuoteParams memory params,
+    bytes calldata marketMakerSignature,
+    bytes calldata userSignature
+) private {
+    // Same basic validations as RFQ-T
+    require(!executedQuotes[params.quoteId], "Quote already executed");
+    require(block.timestamp <= params.expiry, "Quote expired");
+
+    // Generate quote hash
+    bytes32 quoteHash = hashQuote(params);
+
+    // Validate user signature (authorizing relayer execution)
+    require(
+        validateSignature(params.user, quoteHash, userSignature),
+        "Invalid user signature"
+    );
+
+    // Validate market maker signature
+    require(
+        validateSignature(params.marketMaker, quoteHash, marketMakerSignature),
+        "Invalid market maker signature"
+    );
+
+    // Mark quote as executed
+    executedQuotes[params.quoteId] = true;
+}
+```
+
+## Fee Management
+
+### Fee Calculation
+
+```solidity
+function _calculateFee(uint256 amountOut)
+    private view returns (uint256 feeAmount, uint256 userReceiveAmount) {
+    feeAmount = (amountOut * feeBasisPoints) / 10000;
+    userReceiveAmount = amountOut - feeAmount;
+}
+```
+
+### Fee Configuration (Owner Only)
+
+```solidity
+function setFeeBasisPoints(uint256 newFeeBasisPoints) external onlyOwner {
+    require(newFeeBasisPoints <= MAX_FEE_BASIS_POINTS, "Fee too high");
+    uint256 oldFee = feeBasisPoints;
+    feeBasisPoints = newFeeBasisPoints;
+    emit FeeUpdated(oldFee, newFeeBasisPoints);
+}
+```
+
+### Fee Withdrawal (Owner Only)
+
+```solidity
+function withdrawFees(address token, address to) external onlyOwner {
+    require(to != address(0), "Invalid recipient");
+    uint256 amount = collectedFees[token];
+    require(amount > 0, "No fees to withdraw");
+
+    collectedFees[token] = 0;
+
+    if (token == NATIVE_TOKEN) {
+        (bool success, ) = payable(to).call{value: amount}("");
+        require(success, "cBTC transfer failed");
+    } else {
+        IERC20(token).safeTransfer(to, amount);
+    }
+
+    emit FeesWithdrawn(token, to, amount);
+}
+```
+
+## Token Support Matrix
+
+| Trade Type | Input Token Support | Output Token Support |
+|------------|-------------------|---------------------|
+| **RFQ-T** | ✅ Native cBTC<br/>✅ ERC20 tokens | ✅ Native cBTC<br/>✅ ERC20 tokens |
+| **RFQ-M** | ❌ Native cBTC<br/>✅ ERC20 tokens | ✅ Native cBTC<br/>✅ ERC20 tokens |
+
+## Events
+
+### RFQSettled Event
+
+```solidity
+event RFQSettled(
+    bytes32 indexed quoteId,      // Unique quote identifier
+    address indexed user,         // User's address
+    address indexed marketMaker,  // Market maker's address
+    address tokenIn,              // Input token address
+    address tokenOut,             // Output token address
+    uint256 amountIn,             // Input amount
+    uint256 amountOut,            // Output amount
+    bool isRFQT                   // true for RFQ-T, false for RFQ-M
+);
+```
+
+### Fee Management Events
+
+```solidity
+event FeeUpdated(uint256 oldFee, uint256 newFee);
+
+event FeesWithdrawn(
+    address indexed token,
+    address indexed to,
+    uint256 amount
+);
+```
+
+## Security Features
+
+<AccordionGroup>
+  <Accordion title="Reentrancy Protection">
+    All settlement functions use OpenZeppelin's `nonReentrant` modifier to prevent reentrancy attacks.
+
+    ```solidity
+    function settleRFQT(...) external payable nonReentrant {
+        // Protected against reentrancy
+    }
+    ```
+  </Accordion>
+
+  <Accordion title="Quote Uniqueness">
+    Each quote can only be executed once using the `executedQuotes` mapping.
+
+    ```solidity
+    mapping(bytes32 => bool) public executedQuotes;
+    ```
+  </Accordion>
+
+  <Accordion title="Expiry Enforcement">
+    All quotes must be executed before their expiry timestamp.
+
+    ```solidity
+    require(block.timestamp <= params.expiry, "Quote expired");
+    ```
+  </Accordion>
+
+  <Accordion title="Signature Validation">
+    Multiple signature types supported with proper validation for each type.
+  </Accordion>
+</AccordionGroup>
+
+## Gas Optimization
+
+- **Packed structs**: Efficient memory layout for `QuoteParams`
+- **Single validation function**: Unified signature validation logic
+- **Minimal external calls**: Optimized token transfer patterns
+- **Event indexing**: Proper event indexing for efficient querying
+
+## Integration Examples
+
+### Frontend Integration
+
+```typescript
+// Prepare RFQ-T transaction
+const settlementContract = new ethers.Contract(
+  SETTLEMENT_ADDRESS,
+  SETTLEMENT_ABI,
+  signer
+);
+
+const tx = await settlementContract.settleRFQT(
+  {
+    user: userAddress,
+    marketMaker: quote.marketMaker,
+    tokenIn: quote.tokenIn,
+    tokenOut: quote.tokenOut,
+    amountIn: quote.amountIn,
+    amountOut: quote.amountOut,
+    expiry: quote.expiry,
+    quoteId: quote.quoteId
+  },
+  quote.signature,
+  {
+    value: quote.tokenIn === NATIVE_TOKEN ? quote.amountIn : 0,
+    gasLimit: 200000
+  }
+);
+```
+
+### Market Maker Integration
+
+```typescript
+// Generate quote signature
+const domain = {
+  name: 'Settlement',
+  version: '1',
+  chainId: await provider.getNetwork().chainId,
+  verifyingContract: SETTLEMENT_ADDRESS
+};
+
+const types = {
+  Quote: [
+    { name: 'user', type: 'address' },
+    { name: 'tokenIn', type: 'address' },
+    { name: 'tokenOut', type: 'address' },
+    { name: 'amountIn', type: 'uint256' },
+    { name: 'amountOut', type: 'uint256' },
+    { name: 'expiry', type: 'uint256' },
+    { name: 'quoteId', type: 'bytes32' }
+  ]
+};
+
+const signature = await signer._signTypedData(domain, types, quoteData);
+```
+
+## Next Steps
+
+- [WCBTC Contract](/contracts/wcbtc) - Learn about the wrapped cBTC implementation
+- [Deployment Guide](/contracts/deployment) - How to deploy and verify contracts
+- [Integration Guide](/integration/market-makers) - Become a market maker on Crest
