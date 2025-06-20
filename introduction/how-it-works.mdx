@@ -3,8 +3,6 @@ title: "How Crest Works"
 description: "Deep dive into the technical architecture and mechanics of Crest's RFQ system"
 ---
 
-# How Crest Works
-
 Crest's architecture combines **off-chain quote aggregation** with **on-chain settlement**, providing users with the best of both worlds: competitive pricing through market maker competition and trustless execution through smart contracts.
 
 ## System Architecture
@@ -34,7 +32,6 @@ graph TB
 ### 1. RFQ Engine
 The heart of Crest's trading system, responsible for:
 - **Quote orchestration**: Managing the entire quote lifecycle
-- **Market maker selection**: Determining which MMs to ping based on trade parameters
 - **Response aggregation**: Collecting and evaluating quotes within the 500ms window
 - **Best price discovery**: Algorithm to select optimal quotes considering price, size, and reliability
 
@@ -43,14 +40,12 @@ Real-time communication layer that enables:
 - **Persistent connections** with market makers
 - **Sub-second quote requests** and responses
 - **Connection health monitoring** and automatic reconnection
-- **Load balancing** across multiple market makers
 
 ### 3. Smart Contract Settlement
 On-chain execution layer providing:
 - **Trustless settlements** without custody
 - **Multi-signature validation** (EIP712, EIP1271, ETHSIGN)
 - **Native Bitcoin support** through WCBTC integration
-- **Fee collection** and protocol sustainability
 
 ## Quote Lifecycle
 
@@ -68,7 +63,6 @@ interface QuoteRequest {
 When a user requests a quote:
 1. **Input validation**: System validates token addresses, amounts, and user permissions
 2. **MM selection**: Algorithm selects relevant market makers based on:
-   - Token pair support
    - Historical performance
    - Current connectivity status
    - Available liquidity
@@ -119,7 +113,6 @@ struct QuoteResponse {
 The RFQ engine selects the best quote based on:
 - **Price competitiveness**: Best exchange rate for the user
 - **Market maker reliability**: Historical execution success rate
-- **Response time**: Faster responses get slight preference
 - **Available liquidity**: Ensuring MM can fulfill the trade
 
 ### Phase 5: Settlement Execution
@@ -170,20 +163,6 @@ For standard ERC20 tokens:
 - Approval-based system (no custody)
 - Standard ERC20 safety checks
 
-### Fee Collection
-```solidity
-function _calculateFee(uint256 amountOut)
-    private view returns (uint256 feeAmount, uint256 userReceiveAmount) {
-    feeAmount = (amountOut * feeBasisPoints) / 10000;
-    userReceiveAmount = amountOut - feeAmount;
-}
-```
-
-- **Default fee**: 0.3% (30 basis points)
-- **Fee cap**: Maximum 10% (1000 basis points)
-- **Collection method**: Deducted from output amount
-- **Fee destination**: Protocol treasury
-
 ## Security Model
 
 ### Signature Validation
@@ -230,23 +209,6 @@ Crest supports multiple signature types:
 - **Quote uniqueness** prevents double-spending
 - **Deadline enforcement** prevents stale quote execution
 - **Amount validation** ensures correct token transfers
-
-## Performance Characteristics
-
-<CardGroup cols={2}>
-  <Card title="Quote Speed">
-    **~500ms** average quote response time
-  </Card>
-  <Card title="Settlement Speed">
-    **~3-5 seconds** on Citrea network
-  </Card>
-  <Card title="Gas Costs">
-    **~150K gas** for typical settlement
-  </Card>
-  <Card title="Success Rate">
-    **>99%** quote execution success rate
-  </Card>
-</CardGroup>
 
 ## Next Steps
 

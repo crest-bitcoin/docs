@@ -1,17 +1,15 @@
 ---
 title: "What is Crest?"
-description: "A self-custodial Bitcoin trading platform powered by RFQ on Citrea"
+description: "A self-custodial Bitcoin trading app powered by RFQ on Citrea"
 ---
 
-# What is Crest?
-
-Crest is a **self-custodial Bitcoin trading platform** that brings efficient, secure, and decentralized trading to the Bitcoin ecosystem. Built on [Citrea](https://citrea.xyz), an EVM-compatible zk-rollup on Bitcoin, Crest leverages a sophisticated Request for Quote (RFQ) system to enable seamless token swaps without requiring users to give up custody of their assets.
+Crest is a **self-custodial Bitcoin trading platform** that brings efficient, secure, and seamless trading to the Bitcoin ecosystem. Built on [Citrea](https://citrea.xyz), an EVM-compatible zk-rollup on Bitcoin, Crest leverages a Request for Quote (RFQ) system to enable seamless Bitcoin trades without requiring users to give up custody of their assets.
 
 ## Key Features
 
 <CardGroup cols={2}>
   <Card title="Self-Custodial" icon="shield-halved">
-    Your Bitcoin never leaves your control. No deposits, no withdrawals, just secure peer-to-peer trading.
+    Your Bitcoin never leaves your control. No custody, no deposits, just secure peer-to-peer trading.
   </Card>
   <Card title="Ping-Based RFQ" icon="satellite-dish">
     Real-time quote requests to market makers via WebSocket connections for optimal pricing.
@@ -19,7 +17,7 @@ Crest is a **self-custodial Bitcoin trading platform** that brings efficient, se
   <Card title="Native Bitcoin Support" icon="bitcoin">
     Trade native cBTC (Citrea Bitcoin) and ERC20 tokens seamlessly through our smart contracts.
   </Card>
-  <Card title="Zero Slippage" icon="target">
+  <Card title="Zero Slippage" icon="bullseye">
     Fixed-price trades with no slippage, thanks to our RFQ mechanism.
   </Card>
 </CardGroup>
@@ -29,7 +27,7 @@ Crest is a **self-custodial Bitcoin trading platform** that brings efficient, se
 ### The Problem
 Traditional Bitcoin trading often requires:
 - Centralized exchanges with custody risks
-- Complex wrapped Bitcoin solutions
+- Custodian wrapped Bitcoin solutions
 - High fees and slippage
 - Limited DeFi integration
 
@@ -57,7 +55,7 @@ graph TD
 2. **Market Maker Ping**: RFQ system pings connected market makers via WebSocket
 3. **Quote Collection**: System waits 500ms to gather competitive quotes
 4. **Best Price Selection**: Algorithm selects the most favorable quote
-5. **Settlement**: Trade executes on-chain with cryptographic verification
+5. **Settlement**: Trade executes onchain with cryptographic verification
 
 ## Supported Assets
 
@@ -81,27 +79,16 @@ Crest supports two distinct trading mechanisms:
 - **User-initiated** trades
 - Supports **native cBTC** as input
 - User pays gas fees directly
-- Perfect for retail traders
 
 ### RFQ-M (Request for Quote - Meta)
 - **Relayer-executed** trades
 - **ERC20 tokens only** as input
 - Relayer pays gas fees
-- Optimal for institutional flows
 
 <Note>
 Both trade types support any token as output, including native cBTC, providing maximum flexibility for users.
 </Note>
 
-## Getting Started
-
-Ready to start trading on Crest? Here's what you need:
-
-1. **Citrea Wallet**: Set up a wallet compatible with Citrea network
-2. **cBTC or ERC20 Tokens**: Fund your wallet with supported assets
-3. **Connect to Crest**: Visit our trading interface
-4. **Start Trading**: Request quotes and execute trades instantly
-
-<Card title="Launch Crest App" icon="rocket" href="https://app.crest.finance">
-  Start trading Bitcoin with zero custody risk
+<Card title="Launch Crest App" icon="rocket" href="https://crestapp.xyz">
+  Start trading Bitcoin with self-custody and no KYC
 </Card>

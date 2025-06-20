@@ -3,82 +3,9 @@ title: "User Flow"
 description: "Step-by-step guide to trading on Crest"
 ---
 
-# User Flow
+This guide walks through the complete trading flow on Crest, from quote request to settlement.
 
-This guide walks through the complete user journey on Crest, from initial quote request to trade settlement. Understanding this flow is essential for developers integrating with Crest and users wanting to maximize their trading experience.
-
-## Overview
-
-```mermaid
-graph LR
-    A[Connect Wallet] --> B[Select Tokens]
-    B --> C[Enter Amount]
-    C --> D[Request Quote]
-    D --> E[Review Quote]
-    E --> F[Execute Trade]
-    F --> G[Confirm Settlement]
-```
-
-## Step-by-Step Process
-
-### 1. Wallet Connection
-
-First, users connect their Citrea-compatible wallet:
-
-<Steps>
-  <Step title="Select Wallet">
-    Users can connect using:
-    - MetaMask (with Citrea network added)
-    - WalletConnect-compatible wallets
-    - Native Citrea wallets
-  </Step>
-  <Step title="Network Verification">
-    System verifies the wallet is connected to Citrea network
-  </Step>
-  <Step title="Balance Check">
-    Interface displays available balances for all supported tokens
-  </Step>
-</Steps>
-
-### 2. Trade Configuration
-
-Users configure their desired trade:
-
-```typescript
-interface TradeConfig {
-  tokenIn: {
-    address: string;
-    symbol: string;
-    decimals: number;
-    balance: string;
-  };
-  tokenOut: {
-    address: string;
-    symbol: string;
-    decimals: number;
-  };
-  amountIn: string;
-  slippageTolerance: number; // Not used in RFQ, but shown for reference
-}
-```
-
-<CardGroup cols={2}>
-  <Card title="Input Token Selection">
-    - Native cBTC (for RFQ-T)
-    - ERC20 tokens (for both RFQ-T and RFQ-M)
-    - Balance validation
-    - Allowance checking
-  </Card>
-  <Card title="Output Token Selection">
-    - Any supported token
-    - Native cBTC support
-    - Price impact estimation
-  </Card>
-</CardGroup>
-
-### 3. Quote Request Process
-
-When users request a quote, the following happens:
+## Complete Trading Flow
 
 ```mermaid
 sequenceDiagram
@@ -86,20 +13,43 @@ sequenceDiagram
     participant Frontend
     participant RFQ Engine
     participant Market Makers
+    participant Settlement
     participant Blockchain
 
-    User->>Frontend: Click "Get Quote"
-    Frontend->>RFQ Engine: POST /quote
+    User->>Frontend: 1. Enter trade details
+    Note over User,Frontend: Amount, tokens, direction
 
-    RFQ Engine->>Market Makers: WebSocket Ping (Parallel)
-    Note over RFQ Engine: Wait 500ms
+    Frontend->>RFQ Engine: 2. Request quote
+    RFQ Engine->>Market Makers: 3. Broadcast via WebSocket
+    Note over RFQ Engine,Market Makers: 500ms quote window
 
-    Market Makers->>RFQ Engine: Quote Responses + Signatures
-    RFQ Engine->>Frontend: Best Quote Selected
-    Frontend->>User: Display Quote
+    Market Makers-->>RFQ Engine: 4. Return quotes + signatures
+    RFQ Engine->>RFQ Engine: 5. Select best quote
+    RFQ Engine-->>Frontend: 6. Return quote + MM signature
+
+    Frontend->>User: 7. Display quote details
+    Note over Frontend,User: Price, fees, expiry
+
+    alt RFQ-T (User pays gas)
+        User->>Settlement: 8a. Execute settleRFQT
+        Note over User,Settlement: User signs & pays gas
+        Settlement->>Settlement: Validate MM signature
+        Settlement->>Blockchain: Execute swap
+    else RFQ-M (Relayer pays gas)
+        User->>Frontend: 8b. Sign quote hash
+        Frontend->>Settlement: Relayer executes settleRFQM
+        Note over Frontend,Settlement: Relayer pays gas
+        Settlement->>Settlement: Validate both signatures
+        Settlement->>Blockchain: Execute swap
+    end
+
+    Blockchain-->>User: 9. Trade completed
+    Note over Blockchain,User: Tokens transferred
 ```
 
-#### Quote Request Payload
+## Quote Request & Response
+
+### Quote Request Format
 ```json
 {
   "tokenIn": "0x...",
@@ -110,43 +60,29 @@ sequenceDiagram
 }
 ```
 
-#### Quote Response Format
+### Quote Response Format
 ```json
 {
   "quoteId": "0x1234...",
-  "marketMaker": "0x...",
+  "user": "0x...",
+  "tokenIn": "0x...",
+  "tokenOut": "0x...",
+  "amountIn": "1000000000000000000",
   "amountOut": "1950000000",
   "expiry": 1700000300,
   "signature": "0x...",
-  "fee": "5850000",
-  "executionPrice": "1.945",
-  "priceImpact": "0.0%"
+  "executionPrice": "1.945"
 }
 ```
 
-### 4. Quote Review & Approval
-
-Users review the quote details:
-
-<Accordion title="Quote Information Displayed">
-  - **Exchange Rate**: Tokens received per token sent
-  - **Execution Price**: Final price including fees
-  - **Protocol Fee**: 0.3% fee breakdown
-  - **Market Maker**: Address of the providing MM
-  - **Expiration**: Time remaining to execute
-  - **Gas Estimate**: Estimated transaction cost
-</Accordion>
-
-### 5. Trade Execution
-
-Based on the trade type, execution follows different paths:
+## Settlement Process
 
 <Tabs>
-  <Tab title="RFQ-T Execution">
+  <Tab title="RFQ-T Settlement">
     **User-Initiated Settlement**
 
     ```typescript
-    // Frontend prepares transaction
+    // Prepare transaction
     const txData = await settlementContract.populateTransaction.settleRFQT(
       {
         user: userAddress,
@@ -168,7 +104,7 @@ Based on the trade type, execution follows different paths:
     const tx = await wallet.sendTransaction(txData);
     ```
 
-    **Process Flow:**
+    **Settlement Flow:**
     1. User approves ERC20 tokens (if needed)
     2. User sends transaction with quote parameters
     3. Contract validates market maker signature
@@ -176,7 +112,7 @@ Based on the trade type, execution follows different paths:
     5. Settlement event emitted
   </Tab>
 
-  <Tab title="RFQ-M Execution">
+  <Tab title="RFQ-M Settlement">
     **Relayer-Initiated Settlement**
 
     ```typescript
@@ -203,7 +139,7 @@ Based on the trade type, execution follows different paths:
     );
     ```
 
-    **Process Flow:**
+    **Settlement Flow:**
     1. User signs quote approval (off-chain)
     2. Relayer submits transaction with both signatures
     3. Contract validates both user and MM signatures
@@ -212,124 +148,42 @@ Based on the trade type, execution follows different paths:
   </Tab>
 </Tabs>
 
-### 6. Settlement Confirmation
-
-After successful execution:
-
-```mermaid
-graph TD
-    A[Transaction Broadcast] --> B[Mempool]
-    B --> C[Block Inclusion]
-    C --> D[Event Emission]
-    D --> E[Frontend Update]
-    E --> F[Balance Refresh]
-    F --> G[Transaction History]
-```
-
-Users receive:
-- **Transaction Hash**: Link to block explorer
-- **Settlement Details**: Final amounts and fees
-- **Updated Balances**: Reflected in wallet
-- **Trade History**: Stored in local/cloud storage
-
 ## Error Handling
-
-Common error scenarios and their handling:
 
 <AccordionGroup>
   <Accordion title="Quote Expiration">
-    **Scenario**: User tries to execute an expired quote
+    **Scenario**: Quote execution attempted after expiry
 
     **Handling**:
     - Frontend prevents execution of expired quotes
-    - Smart contract reverts with "Quote expired" error
-    - User prompted to request new quote
+    - Smart contract reverts with "Quote expired"
+    - User prompted to request fresh quote
   </Accordion>
 
   <Accordion title="Insufficient Balance">
-    **Scenario**: User lacks sufficient tokens for trade
+    **Scenario**: Insufficient tokens for trade
 
     **Handling**:
-    - Balance validation before quote request
+    - Balance checked before quote request
     - Real-time balance updates
-    - Clear error messaging
+    - Clear error messaging with required amount
   </Accordion>
 
   <Accordion title="Market Maker Unavailable">
-    **Scenario**: No MMs respond to quote request
+    **Scenario**: No quotes received in 500ms window
 
     **Handling**:
-    - Retry mechanism with exponential backoff
+    - Retry with exponential backoff
     - Fallback to alternative MMs
-    - User notification of temporary unavailability
+    - User notification with status
   </Accordion>
 
-  <Accordion title="Signature Validation Failure">
-    **Scenario**: Invalid signature provided
+  <Accordion title="Signature Validation">
+    **Scenario**: Invalid or mismatched signatures
 
     **Handling**:
     - Client-side signature verification
-    - Smart contract validation
-    - User prompted to retry signing
+    - Contract-level validation
+    - Clear error messaging for users
   </Accordion>
 </AccordionGroup>
-
-## Mobile Considerations
-
-For mobile users, additional considerations include:
-
-<CardGroup cols={2}>
-  <Card title="Wallet Integration">
-    - WalletConnect for mobile wallets
-    - Deep linking for native apps
-    - QR code backup for connections
-  </Card>
-  <Card title="User Experience">
-    - Simplified interface for smaller screens
-    - Touch-optimized quote selection
-    - Offline mode for quote browsing
-  </Card>
-</CardGroup>
-
-## Advanced Features
-
-### Quote Comparison
-Users can compare multiple quotes:
-```typescript
-interface QuoteComparison {
-  quotes: Quote[];
-  bestByPrice: Quote;
-  bestBySpeed: Quote;
-  recommendation: Quote;
-  reasons: string[];
-}
-```
-
-### Partial Fill Handling
-For large orders that may not be fully filled:
-- Automatic order splitting
-- Progressive settlement
-- Remainder handling
-
-### Transaction Simulation
-Before execution, users can simulate trades:
-- Gas estimation
-- Outcome prediction
-- Error detection
-
-## Integration Points
-
-Key integration points for developers:
-
-1. **Quote API**: RESTful endpoints for quote requests
-2. **WebSocket Events**: Real-time quote updates
-3. **Contract Interface**: Direct smart contract interaction
-4. **Signature Utilities**: Helper functions for signing
-5. **Event Monitoring**: Settlement tracking
-
-## Next Steps
-
-Now that you understand the user flow:
-- [Explore Smart Contracts](/contracts/overview) - Technical implementation details
-- [Integration Guide](/integration/frontend) - Build your own interface
-- [Security Best Practices](/security/best-practices) - Ensure safe integration
