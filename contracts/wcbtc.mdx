@@ -3,8 +3,6 @@ title: "WCBTC Contract"
 description: "Wrapped cBTC contract for seamless native Bitcoin integration"
 ---
 
-# WCBTC Contract
-
 The WCBTC (Wrapped cBTC) contract is a crucial component of Crest's architecture, enabling seamless conversion between Citrea's native cBTC and an ERC20-compatible representation. This allows for efficient DeFi integration while maintaining 1:1 backing with Bitcoin.
 
 ## Contract Overview
@@ -195,7 +193,6 @@ sequenceDiagram
     participant Settlement
     participant WCBTC
     participant MarketMaker
-    participant ERC20
 
     User->>Settlement: settleRFQT() + 1 cBTC
     Settlement->>WCBTC: deposit() + 1 cBTC
@@ -213,7 +210,6 @@ sequenceDiagram
     participant Settlement
     participant WCBTC
     participant MarketMaker
-    participant ERC20
 
     User->>Settlement: settleRFQT() (pre-approved USDC)
     Settlement->>MarketMaker: transferFrom 1000 USDC
@@ -224,7 +220,7 @@ sequenceDiagram
     Settlement->>User: send 0.997 cBTC (minus fee)
 ```
 
-## Events and Monitoring
+## Events
 
 ### Deposit Event
 
@@ -245,179 +241,3 @@ event Withdrawal(address indexed src, uint256 wad);
 **Event Parameters:**
 - `src`: Address that burned WCBTC tokens
 - `wad`: Amount of WCBTC burned/cBTC withdrawn
-
-### Event Monitoring Example
-
-```typescript
-// Listen for deposit events
-wcbtcContract.on("Deposit", (user, amount, event) => {
-  console.log(`${user} wrapped ${ethers.utils.formatEther(amount)} cBTC`);
-});
-
-// Listen for withdrawal events
-wcbtcContract.on("Withdrawal", (user, amount, event) => {
-  console.log(`${user} unwrapped ${ethers.utils.formatEther(amount)} WCBTC`);
-});
-```
-
-## Security Considerations
-
-### 1:1 Backing Guarantee
-
-The contract maintains a perfect 1:1 backing ratio:
-
-```solidity
-// Total WCBTC supply always equals contract's cBTC balance
-require(address(this).balance == totalSupply(), "Backing ratio violated");
-```
-
-### Reentrancy Protection
-
-While WCBTC doesn't explicitly use reentrancy guards, the simple mint/burn mechanism prevents reentrancy attacks:
-
-```solidity
-function withdraw(uint256 wad) public {
-    // State changes before external call
-    require(balanceOf(msg.sender) >= wad, "Insufficient WCBTC balance");
-    _burn(msg.sender, wad); // Burns tokens first
-
-    // External call last
-    payable(msg.sender).transfer(wad);
-}
-```
-
-### Integer Overflow Protection
-
-Uses Solidity 0.8.20+ built-in overflow protection and OpenZeppelin's SafeERC20 where applicable.
-
-## Gas Optimization
-
-### Efficient Operations
-
-- **Direct minting**: No intermediate storage or complex calculations
-- **Minimal state changes**: Only balance updates required
-- **Batch operations**: Can deposit/withdraw multiple times in single transaction
-
-### Gas Costs (Approximate)
-
-| Operation | Gas Cost |
-|-----------|----------|
-| `deposit()` | ~50,000 gas |
-| `withdraw()` | ~35,000 gas |
-| `transfer()` | ~21,000 gas |
-| `approve()` | ~45,000 gas |
-
-## Market Maker Integration
-
-Market makers should hold WCBTC instead of native cBTC for trading:
-
-```typescript
-// Market maker setup
-class MarketMaker {
-  async setupWCBTC() {
-    // Wrap initial cBTC into WCBTC
-    const initialDeposit = ethers.utils.parseEther("10.0"); // 10 cBTC
-    await this.wcbtcContract.deposit({ value: initialDeposit });
-
-    // Approve Settlement contract to spend WCBTC
-    await this.wcbtcContract.approve(
-      SETTLEMENT_ADDRESS,
-      ethers.constants.MaxUint256
-    );
-  }
-
-  async provideLiquidity(tokenPair: TokenPair, amount: BigNumber) {
-    // Use WCBTC for cBTC pairs
-    const tokenAddress = tokenPair.includes('cBTC')
-      ? this.wcbtcContract.address
-      : tokenPair.address;
-
-    // Ensure sufficient WCBTC balance
-    const balance = await this.wcbtcContract.balanceOf(this.address);
-    if (balance.lt(amount)) {
-      // Wrap more cBTC if needed
-      const needed = amount.sub(balance);
-      await this.wcbtcContract.deposit({ value: needed });
-    }
-  }
-}
-```
-
-## Frontend Integration
-
-### React Hook Example
-
-```typescript
-const useWCBTC = (provider: ethers.providers.Provider) => {
-  const [wcbtcContract, setWCBTCContract] = useState<ethers.Contract>();
-  const [balance, setBalance] = useState<BigNumber>(BigNumber.from(0));
-
-  useEffect(() => {
-    const contract = new ethers.Contract(WCBTC_ADDRESS, WCBTC_ABI, provider);
-    setWCBTCContract(contract);
-  }, [provider]);
-
-  const wrapCBTC = async (amount: BigNumber) => {
-    if (!wcbtcContract) return;
-    const tx = await wcbtcContract.deposit({ value: amount });
-    return tx;
-  };
-
-  const unwrapWCBTC = async (amount: BigNumber) => {
-    if (!wcbtcContract) return;
-    const tx = await wcbtcContract.withdraw(amount);
-    return tx;
-  };
-
-  const getBalance = async (address: string) => {
-    if (!wcbtcContract) return BigNumber.from(0);
-    return await wcbtcContract.balanceOf(address);
-  };
-
-  return { wrapCBTC, unwrapWCBTC, getBalance, wcbtcContract };
-};
-```
-
-## Deployment Information
-
-### Constructor Parameters
-```solidity
-constructor() ERC20("Wrapped cBTC", "WCBTC") {
-  // No additional parameters needed
-}
-```
-
-### Network Addresses
-- **Citrea Testnet**: [To be deployed]
-- **Citrea Mainnet**: [To be deployed]
-- **Local Development**: Deployed via deployment script
-
-### Verification Command
-```bash
-npx hardhat verify --network citrea <WCBTC_ADDRESS>
-```
-
-## Testing and Quality Assurance
-
-### Test Coverage
-- ✅ Deposit functionality
-- ✅ Withdrawal functionality
-- ✅ ERC20 compliance
-- ✅ Event emission
-- ✅ Edge cases (0 amounts, insufficient balance)
-- ✅ Integration with Settlement contract
-
-### Invariant Testing
-```solidity
-// Invariant: Total supply equals contract balance
-assert(address(wcbtc).balance == wcbtc.totalSupply());
-
-// Invariant: Sum of all balances equals total supply
-assert(sumOfAllBalances() == wcbtc.totalSupply());
-```
-
-## Next Steps
-
-- [Settlement Contract](/contracts/settlement) - How WCBTC integrates with trade settlement
-- [Deployment Guide](/contracts/deployment) - Deploy WCBTC and Settlement contracts
-- [Market Maker Guide](/integration/market-makers) - Use WCBTC for market making

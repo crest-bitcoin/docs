@@ -3,8 +3,6 @@ title: "Smart Contract Overview"
 description: "Architecture and design of Crest's smart contract system"
 ---
 
-# Smart Contract Overview
-
 Crest's smart contract architecture is designed for **trustless settlement** of RFQ trades on the Citrea network. The system prioritizes security, gas efficiency, and seamless integration with both native cBTC and ERC20 tokens.
 
 ## Contract Architecture
@@ -195,111 +193,7 @@ sequenceDiagram
     Settlement->>User: transfer native cBTC (minus fee)
 ```
 
-## Security Features
-
-### Reentrancy Protection
-```solidity
-import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
-
-contract Settlement is ReentrancyGuard {
-    function settleRFQT(...) external payable nonReentrant {
-        // Protected against reentrancy attacks
-    }
-}
-```
-
-### Quote Uniqueness
-```solidity
-mapping(bytes32 => bool) public executedQuotes;
-
-function _validateRFQT(QuoteParams memory params, bytes calldata signature) private {
-    require(!executedQuotes[params.quoteId], "Quote already executed");
-    // ... other validations
-    executedQuotes[params.quoteId] = true;
-}
-```
-
-### Expiry Enforcement
-```solidity
-require(block.timestamp <= params.expiry, "Quote expired");
-```
-
-### Amount Validation
-```solidity
-require(params.amountIn > 0 && params.amountOut > 0, "Invalid amounts");
-```
-
-## Fee Structure
-
-### Protocol Fees
-- **Default Rate**: 0.3% (30 basis points)
-- **Maximum Rate**: 10% (1000 basis points)
-- **Collection**: Deducted from output amount
-- **Management**: Owner-controlled fee updates
-
-```solidity
-function _calculateFee(uint256 amountOut)
-    private view returns (uint256 feeAmount, uint256 userReceiveAmount) {
-    feeAmount = (amountOut * feeBasisPoints) / 10000;
-    userReceiveAmount = amountOut - feeAmount;
-}
-```
-
-### Fee Withdrawal
-```solidity
-function withdrawFees(address token, address to) external onlyOwner {
-    uint256 amount = collectedFees[token];
-    require(amount > 0, "No fees to withdraw");
-
-    collectedFees[token] = 0;
-
-    if (token == NATIVE_TOKEN) {
-        payable(to).transfer(amount);
-    } else {
-        IERC20(token).safeTransfer(to, amount);
-    }
-}
-```
-
-## Gas Optimization
-
-### Packed Structs
-```solidity
-struct QuoteParams {
-    address user;           // 20 bytes
-    address marketMaker;    // 20 bytes
-    address tokenIn;        // 20 bytes
-    address tokenOut;       // 20 bytes
-    uint256 amountIn;       // 32 bytes
-    uint256 amountOut;      // 32 bytes
-    uint256 expiry;         // 32 bytes
-    bytes32 quoteId;        // 32 bytes
-}
-```
-
-### Efficient Validation
-```solidity
-// Single signature validation function for all types
-function validateSignature(address signer, bytes32 hash, bytes memory signature)
-    public view returns (bool) {
-
-    if (signature.length == 65) {
-        // EOA signature - direct recovery
-        return signer == hash.recover(signature);
-    } else if (signature.length >= 4) {
-        // Contract signature - EIP1271
-        try IERC1271(signer).isValidSignature(hash, signature)
-            returns (bytes4 magicValue) {
-            return magicValue == EIP1271_MAGIC_VALUE;
-        } catch {
-            return false;
-        }
-    }
-    return false;
-}
-```
-
-## Events and Monitoring
+## Events
 
 ### Settlement Event
 ```solidity
@@ -320,39 +214,3 @@ event RFQSettled(
 event FeeUpdated(uint256 oldFee, uint256 newFee);
 event FeesWithdrawn(address indexed token, address indexed to, uint256 amount);
 ```
-
-## Deployment Configuration
-
-### Constructor Parameters
-```solidity
-constructor(address _wcbtc) EIP712("Settlement", "1") Ownable(msg.sender) {
-    require(_wcbtc != address(0), "Invalid WCBTC address");
-    wcbtc = WCBTC(payable(_wcbtc));
-}
-```
-
-### Network Compatibility
-- **Citrea Testnet**: Chain ID 5115
-- **Citrea Mainnet**: Chain ID [TBD]
-- **Local Development**: Chain ID 31337
-
-## Testing and Verification
-
-### Test Coverage
-- **Unit Tests**: 100% function coverage
-- **Integration Tests**: End-to-end settlement flows
-- **Fuzz Testing**: Edge case validation
-- **Gas Optimization**: Benchmark comparisons
-
-### Formal Verification
-- **Signature validation correctness**
-- **Fee calculation accuracy**
-- **Reentrancy protection**
-- **Access control enforcement**
-
-## Next Steps
-
-Explore the detailed contract implementations:
-- [Settlement Contract](/contracts/settlement) - Complete function reference
-- [WCBTC Contract](/contracts/wcbtc) - Wrapped Bitcoin implementation
-- [Deployment Guide](/contracts/deployment) - How to deploy contracts
