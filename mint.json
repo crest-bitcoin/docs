@@ -59,8 +59,7 @@
       "group": "Trading Mechanisms",
       "pages": [
         "trading/rfqt",
-        "trading/rfqm",
-        "trading/fees"
+        "trading/rfqm"
       ]
     },
     {

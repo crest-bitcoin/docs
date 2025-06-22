@@ -1,743 +1,305 @@
 ---
 title: "RFQ-M (Relayer-Initiated Settlement)"
-description: "Complete guide to relayer-initiated settlements with gas abstraction and seamless UX"
+description: "Deep dive into relayer-initiated trade execution on Crest"
 ---
 
-# RFQ-M (Relayer-Initiated Settlement)
+RFQ-M (Request for Quote - Market Maker) is Crest's **gas abstraction mechanism** where relayers execute trades on behalf of users. This mode enables zero-gas trading while maintaining self-custody of funds.
 
-**RFQ-M** represents Crest's **gas abstraction layer**, enabling users to trade Bitcoin with **zero gas fees** while maintaining full self-custody. Relayers handle gas payments and settlement execution on behalf of users, creating a seamless trading experience similar to centralized exchanges.
-
-## Overview
-
-### What is RFQ-M?
-
-RFQ-M (Request for Quote - Market Maker initiated) is a settlement mechanism where:
-
-- **Users** sign quotes off-chain (no gas required)
-- **Relayers** pay gas fees and execute settlements
-- **Market makers** provide liquidity and sign quotes
-- **Smart contracts** ensure trustless execution
-
-```mermaid
-graph LR
-    A[User Requests Quote] --> B[Market Makers Respond]
-    B --> C[User Signs Best Quote]
-    C --> D[Relayer Executes Settlement]
-    D --> E[User Receives Tokens]
-
-    style A fill:#e1f5fe
-    style E fill:#e8f5e8
-    style D fill:#fff3e0
-```
-
-### Key Benefits
+## Key Characteristics
 
 <CardGroup cols={2}>
-  <Card title="Zero Gas Fees" icon="dollar-sign">
-    Users never pay gas - relayers handle all transaction costs
+  <Card title="Gas Abstraction" icon="gas-pump">
+    Relayers pay gas fees, enabling zero-gas trading for users
+  </Card>
+  <Card title="Dual Signatures" icon="signature">
+    Requires both user and market maker signatures for security
   </Card>
   <Card title="Native cBTC Support" icon="bitcoin">
-    Direct Bitcoin trading without bridges or wrapped tokens
+    Unique support for native cBTC as output token
   </Card>
-  <Card title="Self-Custodial" icon="shield">
-    Users maintain full control - no funds held by relayers
-  </Card>
-  <Card title="Instant Settlement" icon="zap">
-    Sub-second execution once quotes are signed
+  <Card title="Relayer Execution" icon="bolt">
+    Professional relayers ensure fast and reliable settlement
   </Card>
 </CardGroup>
 
 ## How RFQ-M Works
 
-### Settlement Flow
+### 1. Quote Request & Response
 
 ```mermaid
 sequenceDiagram
     participant User
-    participant Frontend
+    participant RFQ Engine
+    participant MarketMaker
+    participant Relayer
+    participant Settlement
+
+    User->>RFQ Engine: Request Quote
+    RFQ Engine->>MarketMaker: Ping for Quote
+    MarketMaker->>RFQ Engine: Signed Quote Response
+    RFQ Engine->>User: Best Quote
+    User->>RFQ Engine: Sign Quote
+    RFQ Engine->>Relayer: Submit Signed Quote
+    Relayer->>Settlement: settleRFQM() + Both Signatures
+    Settlement->>Settlement: Execute Trade
+```
+
+### 2. Settlement Function Call
+
+```solidity
+function settleRFQM(
+    QuoteParams calldata params,
+    bytes calldata marketMakerSignature,
+    bytes calldata userSignature
+) external payable nonReentrant {
+    require(!executedQuotes[params.quoteId], "Quote already executed");
+    _validateRFQM(params, marketMakerSignature, userSignature);
+    _executeRFQM(params);
+}
+```
+
+## Trade Execution Scenarios
+
+### Scenario 1: WCBTC → USDC
+
+```mermaid
+sequenceDiagram
+    participant User
+    participant Relayer
+    participant Settlement
+    participant WCBTC
+    participant MarketMaker
+    participant USDC
+
+    Note over User,USDC: Scenario 1: WCBTC → USDC
+    User->>Settlement: Approve WCBTC spending
+    User->>Relayer: Sign quote for 1 WCBTC ($100,000)
+    Relayer->>Settlement: settleRFQM() (pays gas)
+    Settlement->>WCBTC: transferFrom(user, mm, 1 WCBTC)
+    WCBTC->>MarketMaker: 1 WCBTC
+    MarketMaker->>Settlement: 100,000 USDC
+    Settlement->>User: 99,700 USDC (minus 0.3% fee)
+    Settlement->>Settlement: Store 300 USDC fee
+```
+
+**Execution Flow:**
+1. User signs quote for 1 WCBTC trade
+2. Relayer submits transaction and pays gas
+3. WCBTC transferred directly to market maker
+4. Market maker sends USDC to Settlement
+5. User receives 99,700 USDC (after 0.3% fee)
+
+### Scenario 2: USDC → Native cBTC
+
+```mermaid
+sequenceDiagram
+    participant User
+    participant Relayer
+    participant Settlement
+    participant WCBTC
+    participant MarketMaker
+    participant USDC
+
+    Note over User,USDC: Scenario 2: USDC → Native cBTC
+    User->>Settlement: Approve USDC spending
+    User->>Relayer: Sign quote for 100,000 USDC
+    Relayer->>Settlement: settleRFQM() (pays gas)
+    Settlement->>USDC: transferFrom(user, mm, 100,000 USDC)
+    USDC->>MarketMaker: 100,000 USDC
+    MarketMaker->>Settlement: 1 WCBTC
+    Settlement->>WCBTC: withdraw() 1 WCBTC
+    Settlement->>User: 0.997 cBTC ($99,700)
+    Settlement->>Settlement: Store 0.003 cBTC ($300) fee
+```
+
+**Execution Flow:**
+1. User signs quote for 100,000 USDC trade
+2. Relayer executes settlement (pays gas)
+3. USDC transferred to market maker
+4. Market maker sends WCBTC to Settlement
+5. Settlement unwraps WCBTC and sends native cBTC to user
+
+### Scenario 3: USDC → WCBTC
+
+```mermaid
+sequenceDiagram
+    participant User
     participant Relayer
     participant Settlement
     participant MarketMaker
+    participant USDC
+    participant WCBTC
 
-    User->>Frontend: Request trade quote
-    Frontend->>Relayer: Get available quotes
-    Relayer->>MarketMaker: Request quotes via WebSocket
-    MarketMaker->>Relayer: Return signed quotes
-
-    Relayer->>Frontend: Best quote + parameters
-    Frontend->>User: Display quote for approval
-    User->>Frontend: Sign quote approval
-
-    Frontend->>Relayer: Submit signed quote
-    Relayer->>Settlement: settleRFQM(params, mmSig, userSig)
-    Settlement->>Settlement: Validate signatures
-    Settlement->>MarketMaker: Transfer input tokens from user
-    MarketMaker->>User: Transfer output tokens
-    Settlement->>Relayer: Emit success event
-
-    Note over User,Settlement: User gets tokens, pays no gas
+    Note over User,WCBTC: Scenario 3: USDC → WCBTC
+    User->>Settlement: Approve USDC spending
+    User->>Relayer: Sign quote for 100,000 USDC
+    Relayer->>Settlement: settleRFQM() (pays gas)
+    Settlement->>USDC: transferFrom(user, mm, 100,000 USDC)
+    USDC->>MarketMaker: 100,000 USDC
+    MarketMaker->>Settlement: 1 WCBTC
+    Settlement->>User: 0.997 WCBTC ($99,700)
+    Settlement->>Settlement: Store 0.003 WCBTC ($300) fee
 ```
 
-### Signature Requirements
+## Technical Implementation
 
-RFQ-M requires **dual signatures** for security:
-
-<Tabs>
-  <Tab title="Market Maker Signature">
-    ```typescript
-    // Market maker signs the quote parameters
-    const mmSignature = await marketMaker.signTypedData({
-      domain: DOMAIN,
-      types: QUOTE_TYPES,
-      value: {
-        user: userAddress,
-        marketMaker: mmAddress,
-        tokenIn: tokenInAddress,
-        tokenOut: tokenOutAddress,
-        amountIn: amountIn,
-        amountOut: amountOut,
-        expiry: expiry,
-        quoteId: quoteId
-      }
-    });
-    ```
-  </Tab>
-  <Tab title="User Signature">
-    ```typescript
-    // User signs approval for the specific quote
-    const userSignature = await user.signTypedData({
-      domain: DOMAIN,
-      types: QUOTE_TYPES,
-      value: {
-        user: userAddress,
-        marketMaker: mmAddress,
-        tokenIn: tokenInAddress,
-        tokenOut: tokenOutAddress,
-        amountIn: amountIn,
-        amountOut: amountOut,
-        expiry: expiry,
-        quoteId: quoteId
-      }
-    });
-    ```
-  </Tab>
-  <Tab title="Settlement Execution">
-    ```solidity
-    // Settlement contract validates both signatures
-    function settleRFQM(
-        QuoteParams calldata params,
-        bytes calldata mmSignature,
-        bytes calldata userSignature
-    ) external payable nonReentrant {
-        bytes32 hash = hashQuote(params);
-
-        // Validate market maker signature
-        require(
-            validateSignature(params.marketMaker, hash, mmSignature),
-            "Invalid MM signature"
-        );
-
-        // Validate user signature
-        require(
-            validateSignature(params.user, hash, userSignature),
-            "Invalid user signature"
-        );
-
-        _executeSettlement(params);
-    }
-    ```
-  </Tab>
-</Tabs>
-
-## Implementation Guide
-
-### Frontend Integration
-
-```typescript
-// RFQ-M quote request flow
-class RFQMService {
-  async requestQuote(params: QuoteRequest): Promise<RFQMQuote> {
-    // 1. Request quotes from relayer
-    const response = await fetch('/api/quotes/rfqm', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        tokenIn: params.tokenIn,
-        tokenOut: params.tokenOut,
-        amountIn: params.amountIn,
-        userAddress: params.userAddress
-      })
-    });
-
-    const { quote, marketMakerSignature } = await response.json();
-
-    return {
-      params: quote,
-      mmSignature: marketMakerSignature,
-      expiry: quote.expiry,
-      estimatedGas: 0 // User pays no gas
-    };
-  }
-
-  async executeQuote(quote: RFQMQuote, userWallet: Wallet): Promise<string> {
-    // 2. User signs the quote
-    const userSignature = await userWallet.signTypedData({
-      domain: EIP712_DOMAIN,
-      types: QUOTE_TYPES,
-      value: quote.params
-    });
-
-    // 3. Submit to relayer for execution
-    const response = await fetch('/api/execute/rfqm', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        params: quote.params,
-        mmSignature: quote.mmSignature,
-        userSignature: userSignature
-      })
-    });
-
-    const { transactionHash } = await response.json();
-    return transactionHash;
-  }
-}
-```
-
-### Relayer Implementation
-
-```typescript
-// Relayer service for RFQ-M execution
-class RFQMRelayer {
-  async processQuoteRequest(request: QuoteRequest): Promise<QuoteResponse> {
-    // 1. Broadcast to market makers
-    const quotes = await this.broadcastToMarketMakers(request);
-
-    // 2. Select best quote
-    const bestQuote = this.selectBestQuote(quotes);
-
-    // 3. Return quote with MM signature
-    return {
-      quote: bestQuote.params,
-      mmSignature: bestQuote.signature,
-      relayerFee: this.calculateRelayerFee(bestQuote),
-      expiry: bestQuote.expiry
-    };
-  }
-
-  async executeSettlement(
-    params: QuoteParams,
-    mmSignature: string,
-    userSignature: string
-  ): Promise<string> {
-    // 1. Validate signatures locally
-    const hash = this.hashQuote(params);
-    if (!this.validateSignature(params.marketMaker, hash, mmSignature)) {
-      throw new Error('Invalid market maker signature');
-    }
-    if (!this.validateSignature(params.user, hash, userSignature)) {
-      throw new Error('Invalid user signature');
-    }
-
-    // 2. Check quote expiry
-    if (Date.now() > params.expiry * 1000) {
-      throw new Error('Quote expired');
-    }
-
-    // 3. Execute settlement transaction
-    const settlement = new ethers.Contract(
-      SETTLEMENT_ADDRESS,
-      SETTLEMENT_ABI,
-      this.wallet
-    );
-
-    const tx = await settlement.settleRFQM(
-      params,
-      mmSignature,
-      userSignature,
-      {
-        gasLimit: 200000,
-        gasPrice: await this.getOptimalGasPrice()
-      }
-    );
-
-    return tx.hash;
-  }
-
-  private calculateRelayerFee(quote: Quote): bigint {
-    // Relayer fee covers gas + small profit margin
-    const gasEstimate = 150000n; // ~150K gas per settlement
-    const gasPriceWei = 1000000000n; // 1 gwei on Citrea
-    const gasCost = gasEstimate * gasPriceWei;
-    const profitMargin = gasCost / 10n; // 10% profit margin
-
-    return gasCost + profitMargin;
-  }
-}
-```
-
-### Market Maker Integration
-
-```typescript
-// Market maker RFQ-M quote generation
-class MarketMakerRFQM {
-  async generateQuote(request: QuoteRequest): Promise<SignedQuote> {
-    // 1. Calculate output amount based on current prices
-    const outputAmount = await this.calculateOutputAmount(
-      request.tokenIn,
-      request.tokenOut,
-      request.amountIn
-    );
-
-    // 2. Apply spread and fees
-    const adjustedAmount = this.applySpread(outputAmount, request);
-
-    // 3. Create quote parameters
-    const params: QuoteParams = {
-      user: request.userAddress,
-      marketMaker: this.address,
-      tokenIn: request.tokenIn,
-      tokenOut: request.tokenOut,
-      amountIn: request.amountIn,
-      amountOut: adjustedAmount,
-      expiry: Math.floor(Date.now() / 1000) + 30, // 30 second expiry
-      quoteId: this.generateQuoteId()
-    };
-
-    // 4. Sign the quote
-    const signature = await this.signQuote(params);
-
-    return { params, signature };
-  }
-
-  private async signQuote(params: QuoteParams): Promise<string> {
-    return await this.wallet.signTypedData({
-      domain: EIP712_DOMAIN,
-      types: QUOTE_TYPES,
-      value: params
-    });
-  }
-
-  private applySpread(baseAmount: bigint, request: QuoteRequest): bigint {
-    // Apply different spreads based on market conditions
-    const spread = this.calculateSpread(request.tokenIn, request.tokenOut);
-    const spreadAmount = (baseAmount * BigInt(spread)) / 10000n;
-
-    return baseAmount - spreadAmount;
-  }
-}
-```
-
-## Gas Economics
-
-### Cost Structure
-
-<Tabs>
-  <Tab title="User Perspective">
-    ```typescript
-    // User pays ZERO gas fees
-    const userCosts = {
-      gasFees: 0,           // Relayer covers all gas
-      tradingFees: 0.003,   // 0.3% protocol fee
-      spreadCosts: 0.001,   // ~0.1% market maker spread
-      totalCost: 0.004      // ~0.4% total cost
-    };
-    ```
-  </Tab>
-  <Tab title="Relayer Economics">
-    ```typescript
-    // Relayer cost/revenue analysis
-    const relayerEconomics = {
-      gasCost: 150000 * 1e9,      // 150K gas at 1 gwei = 0.00015 cBTC
-      relayerFee: 0.000165,       // 10% markup = 0.000165 cBTC
-      profitPerTrade: 0.000015,   // 0.000015 cBTC profit
-      breakEvenVolume: 1000       // trades/day to be profitable
-    };
-    ```
-  </Tab>
-  <Tab title="Market Maker View">
-    ```typescript
-    // Market maker receives spread
-    const marketMakerRewards = {
-      spread: 0.001,          // ~0.1% spread on trades
-      volumeBonus: 0.0005,    // Additional rewards for high volume
-      gasRebate: 0,           // No gas costs in RFQ-M
-      totalRevenue: 0.0015    // ~0.15% per trade
-    };
-    ```
-  </Tab>
-</Tabs>
-
-### Relayer Incentives
-
-```typescript
-// Dynamic fee adjustment based on network conditions
-class RelayerFeeManager {
-  calculateDynamicFee(networkConditions: NetworkState): bigint {
-    const baseFee = 150000n * this.getCurrentGasPrice();
-
-    // Adjust based on network congestion
-    const congestionMultiplier = networkConditions.congestionLevel > 0.8
-      ? 150n  // 50% markup during high congestion
-      : 110n; // 10% markup normal conditions
-
-    return (baseFee * congestionMultiplier) / 100n;
-  }
-
-  async optimizeGasPrice(): Promise<bigint> {
-    // Use EIP-1559 for optimal gas pricing
-    const { baseFeePerGas, maxPriorityFeePerGas } = await this.getGasOracle();
-
-    return baseFeePerGas + maxPriorityFeePerGas;
-  }
-}
-```
-
-## Security Considerations
-
-### Signature Security
-
-<Warning>
-**Critical Security Requirements**
-
-- Both market maker AND user signatures required
-- Signatures must match exact quote parameters
-- Quote expiry prevents replay attacks
-- Unique quote IDs prevent double-execution
-</Warning>
+### Validation Process
 
 ```solidity
-// Settlement contract security validations
-function settleRFQM(
-    QuoteParams calldata params,
-    bytes calldata mmSignature,
+function _validateRFQM(
+    QuoteParams memory params,
+    bytes calldata marketMakerSignature,
     bytes calldata userSignature
-) external payable nonReentrant {
-    // 1. Validate quote hasn't been executed
+) private {
+    // Prevent replay attacks
     require(!executedQuotes[params.quoteId], "Quote already executed");
 
-    // 2. Check expiry
+    // Check expiration
     require(block.timestamp <= params.expiry, "Quote expired");
 
-    // 3. Validate both signatures
-    bytes32 hash = hashQuote(params);
-    require(validateSignature(params.marketMaker, hash, mmSignature), "Invalid MM sig");
-    require(validateSignature(params.user, hash, userSignature), "Invalid user sig");
+    // Native cBTC not supported as input token in RFQ-M
+    require(params.tokenIn != NATIVE_TOKEN, "Native cBTC not supported as input in RFQ-M");
 
-    // 4. Mark as executed BEFORE external calls
+    // Validate both signatures
+    bytes32 quoteHash = hashQuote(params);
+    require(
+        validateSignature(params.marketMaker, quoteHash, marketMakerSignature),
+        "Invalid market maker signature"
+    );
+    require(
+        validateSignature(params.user, quoteHash, userSignature),
+        "Invalid user signature"
+    );
+
+    // Mark as executed
     executedQuotes[params.quoteId] = true;
-
-    // 5. Execute settlement
-    _executeSettlement(params);
 }
 ```
 
-### Relayer Trust Model
+### Execution Logic
 
-```mermaid
-graph TB
-    subgraph "Trust Boundaries"
-        A[User Signs Quote] --> B[Relayer Executes]
-        B --> C[Smart Contract Validates]
-        C --> D[Settlement Executes]
-    end
+```solidity
+function _executeRFQM(QuoteParams memory params) private {
+    (uint256 feeAmount, uint256 userReceiveAmount) = _calculateFee(params.amountOut);
 
-    subgraph "Security Guarantees"
-        E[Signature Verification]
-        F[Atomic Settlement]
-        G[No Fund Custody]
-        H[Expiry Protection]
-    end
+    // Handle input token (never native cBTC)
+    IERC20(params.tokenIn).safeTransferFrom(
+        params.user,
+        params.marketMaker,
+        params.amountIn
+    );
 
-    C --> E
-    C --> F
-    C --> G
-    C --> H
+    // Handle output token
+    if (params.tokenOut == NATIVE_TOKEN) {
+        // Output is native cBTC
+        IERC20(address(wcbtc)).safeTransferFrom(
+            params.marketMaker,
+            address(this),
+            params.amountOut
+        );
+        wcbtc.withdraw(params.amountOut);
+        (bool success, ) = payable(params.user).call{value: userReceiveAmount}("");
+        require(success, "cBTC transfer to user failed");
 
-    style A fill:#e8f5e8
-    style D fill:#e8f5e8
-    style B fill:#fff3e0
+        if (feeAmount > 0) {
+            collectedFees[NATIVE_TOKEN] += feeAmount;
+        }
+    } else {
+        // Output is an ERC20 token
+        IERC20(params.tokenOut).safeTransferFrom(
+            params.marketMaker,
+            params.user,
+            userReceiveAmount
+        );
+
+        if (feeAmount > 0) {
+            IERC20(params.tokenOut).safeTransferFrom(
+                params.marketMaker,
+                address(this),
+                feeAmount
+            );
+            collectedFees[params.tokenOut] += feeAmount;
+        }
+    }
+
+    emit RFQSettled(/* ... */, false); // isRFQT = false
+}
 ```
 
-### Attack Vectors & Mitigations
+## User Experience Considerations
+
+### Pre-Execution Checks
+
+Before executing RFQ-M trades, we verify:
 
 <AccordionGroup>
-  <Accordion title="Relayer Front-Running">
-    **Risk**: Relayer sees profitable trade and front-runs user
+  <Accordion title="1. Balance Check">
+    **For Native cBTC:**
+    - Verify wallet has sufficient cBTC balance
+    - No extra buffer needed for gas
+    - Example: For 1 cBTC trade ($100,000), ensure balance ≥ 1 cBTC
 
-    **Mitigation**:
-    - User signature locks in specific quote
-    - Quote expiry limits time window
-    - Slippage protection in quotes
+    **For ERC20 Tokens:**
+    - Check token balance matches trade amount
+    - Example: For 100,000 USDC trade, verify USDC balance ≥ 100,000
   </Accordion>
 
-  <Accordion title="Market Maker Collusion">
-    **Risk**: Market makers provide poor quotes to users
+  <Accordion title="2. Token Approval">
+    **When trading ERC20 tokens:**
+    - Check if Settlement contract has sufficient allowance
+    - Current allowance should be ≥ trade amount
+    - If insufficient:
+      1. Call approve() on token contract
+      2. Set allowance for Settlement contract address
+      3. Wait for approval transaction to confirm
 
-    **Mitigation**:
-    - Multiple market makers compete
-    - Users can reject quotes
-    - Transparent quote comparison
+    **Note:** Not required for native cBTC trades
   </Accordion>
 
-  <Accordion title="Signature Replay">
-    **Risk**: Attacker reuses valid signatures
-
-    **Mitigation**:
-    - Unique quote IDs prevent replay
-    - Expiry timestamps limit validity
-    - Nonce-based quote generation
+  <Accordion title="3. Quote Validation">
+    **Expiration:**
+    - Check current timestamp vs quote expiry
+    - Quotes typically valid for 3-4 seconds
+    - Request new quote if expired
   </Accordion>
 
-  <Accordion title="Relayer Griefing">
-    **Risk**: Relayer accepts quotes but doesn't execute
-
-    **Mitigation**:
-    - Multiple relayer options
-    - Relayer reputation system
-    - Client-side timeout handling
+  <Accordion title="4. Relayer Status">
+    **Ensure sufficient cBTC for gas:**
+    - Check relayer is online and responsive
+    - Verify relayer has sufficient gas balance
+    - Monitor relayer response times
   </Accordion>
 </AccordionGroup>
 
-## User Experience Optimizations
+### Error Handling
 
-### Progressive Enhancement
-
-```typescript
-// Graceful fallback from RFQ-M to RFQ-T
-class AdaptiveTrading {
-  async executeTrade(params: TradeParams): Promise<TradeResult> {
-    try {
-      // 1. Try RFQ-M first (zero gas)
-      return await this.executeRFQM(params);
-    } catch (error) {
-      if (error.code === 'RELAYER_UNAVAILABLE') {
-        // 2. Fallback to RFQ-T (user pays gas)
-        console.log('Relayer unavailable, falling back to direct settlement');
-        return await this.executeRFQT(params);
-      }
-      throw error;
-    }
-  }
-
-  private async executeRFQM(params: TradeParams): Promise<TradeResult> {
-    // Implementation for gasless trading
-    return this.rfqmService.execute(params);
-  }
-
-  private async executeRFQT(params: TradeParams): Promise<TradeResult> {
-    // Implementation for direct user settlement
-    return this.rfqtService.execute(params);
-  }
-}
-```
-
-### Real-Time Status Updates
-
-```typescript
-// WebSocket integration for real-time trade status
-class TradeStatusTracker {
-  trackRFQMTrade(quoteId: string): Observable<TradeStatus> {
-    return new Observable(observer => {
-      const ws = new WebSocket(`wss://api.crest.app/trades/${quoteId}/status`);
-
-      ws.onmessage = (event) => {
-        const status = JSON.parse(event.data);
-        observer.next({
-          stage: status.stage,     // 'quoted' | 'signed' | 'submitted' | 'confirmed'
-          txHash: status.txHash,
-          gasUsed: status.gasUsed,
-          timestamp: status.timestamp
-        });
-      };
-
-      return () => ws.close();
-    });
-  }
-}
-```
-
-## Integration Examples
-
-### React Component
-
-```tsx
-// React component for RFQ-M trading
-export function RFQMTradeWidget() {
-  const [quote, setQuote] = useState<RFQMQuote | null>(null);
-  const [isTrading, setIsTrading] = useState(false);
-  const { account, signTypedData } = useWallet();
-
-  const handleGetQuote = async () => {
-    const rfqmService = new RFQMService();
-
-    const newQuote = await rfqmService.requestQuote({
-      tokenIn: selectedTokenIn,
-      tokenOut: selectedTokenOut,
-      amountIn: inputAmount,
-      userAddress: account
-    });
-
-    setQuote(newQuote);
-  };
-
-  const handleExecuteTrade = async () => {
-    if (!quote || !account) return;
-
-    setIsTrading(true);
-    try {
-      // User signs the quote (no gas required)
-      const userSignature = await signTypedData({
-        domain: EIP712_DOMAIN,
-        types: QUOTE_TYPES,
-        value: quote.params
-      });
-
-      // Submit to relayer for execution
-      const txHash = await fetch('/api/execute/rfqm', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          params: quote.params,
-          mmSignature: quote.mmSignature,
-          userSignature
-        })
-      }).then(r => r.json());
-
-      console.log('Trade executed:', txHash);
-    } catch (error) {
-      console.error('Trade failed:', error);
-    } finally {
-      setIsTrading(false);
-    }
-  };
-
-  return (
-    <div className="rfqm-widget">
-      <div className="quote-section">
-        <button onClick={handleGetQuote}>
-          Get Quote (Gas Free!)
-        </button>
-
-        {quote && (
-          <div className="quote-display">
-            <p>Rate: {formatRate(quote.params.amountOut, quote.params.amountIn)}</p>
-            <p>Expires: {formatExpiry(quote.params.expiry)}</p>
-            <p className="gas-free">✅ No gas fees required</p>
-          </div>
-        )}
-      </div>
-
-      {quote && (
-        <button
-          onClick={handleExecuteTrade}
-          disabled={isTrading}
-          className="execute-button"
-        >
-          {isTrading ? 'Executing...' : 'Execute Trade (Free)'}
-        </button>
-      )}
-    </div>
-  );
-}
-```
-
-## Performance Metrics
-
-### Benchmarks
-
-<CardGroup cols={3}>
-  <Card title="Quote Generation" icon="clock">
-    **< 500ms**
-
-    From request to signed quote
-  </Card>
-  <Card title="Settlement Time" icon="zap">
-    **< 2 seconds**
-
-    From user signature to confirmation
-  </Card>
-  <Card title="Gas Efficiency" icon="leaf">
-    **~150K gas**
-
-    Per settlement transaction
-  </Card>
-</CardGroup>
-
-### Monitoring Dashboard
-
-```typescript
-// Analytics for RFQ-M performance
-interface RFQMMetrics {
-  dailyVolume: bigint;
-  averageQuoteTime: number;     // milliseconds
-  averageSettlementTime: number; // seconds
-  relayerUptime: number;        // percentage
-  userSatisfactionScore: number; // 1-10 scale
-  gasEfficiency: number;        // gas per $1000 volume
-}
-
-class RFQMAnalytics {
-  async getMetrics(timeframe: string): Promise<RFQMMetrics> {
-    const events = await this.getSettlementEvents(timeframe);
-
-    return {
-      dailyVolume: this.calculateVolume(events),
-      averageQuoteTime: this.calculateAverageQuoteTime(events),
-      averageSettlementTime: this.calculateAverageSettlementTime(events),
-      relayerUptime: await this.getRelayerUptime(timeframe),
-      userSatisfactionScore: await this.getUserSatisfactionScore(timeframe),
-      gasEfficiency: this.calculateGasEfficiency(events)
-    };
-  }
-}
-```
-
-## Comparison: RFQ-M vs RFQ-T
-
-| Feature | RFQ-M | RFQ-T |
-|---------|--------|--------|
-| **Gas Fees** | Zero (relayer pays) | User pays (~$0.10) |
-| **Settlement Speed** | ~2 seconds | ~15 seconds |
-| **Setup Complexity** | High (relayer needed) | Low (direct to contract) |
-| **UX Quality** | Excellent (CEX-like) | Good (standard DeFi) |
-| **Decentralization** | Lower (relayer dependency) | Higher (direct execution) |
-| **Availability** | Depends on relayers | Always available |
-
-## Future Enhancements
-
-### Planned Features
+Common errors and their resolutions:
 
 <AccordionGroup>
-  <Accordion title="Cross-Chain RFQ-M">
-    - Multi-chain relayer network
-    - Unified liquidity across chains
-    - Atomic cross-chain settlements
+  <Accordion title="Insufficient Balance">
+    **Error**: "Insufficient token balance"
+
+    **Resolution**:
+    - Check token balance matches trade amount
+    - No need to check for gas balance
+    - Consider reducing trade size if needed
   </Accordion>
 
-  <Accordion title="Relayer Competition">
-    - Multiple relayer options per trade
-    - Dynamic fee competition
-    - Relayer reputation scoring
+  <Accordion title="Quote Expired">
+    **Error**: "Quote expired"
+
+    **Resolution**:
+    - Request a new quote from the RFQ system
+    - Execute trades promptly after receiving quotes
+    - Consider implementing quote refresh functionality
   </Accordion>
 
-  <Accordion title="Advanced Gas Optimization">
-    - EIP-4337 account abstraction
-    - Batch settlement support
-    - MEV-protected execution
-  </Accordion>
+  <Accordion title="Insufficient Allowance">
+    **Error**: "ERC20: insufficient allowance"
 
-  <Accordion title="Enhanced Privacy">
-    - Private mempool submission
-    - Encrypted quote requests
-    - Anonymous relayer selection
+    **Resolution**:
+    - Approve the Settlement contract to spend tokens
+    - Use `approve()` or `increaseAllowance()`
+    - Consider unlimited approval for frequent trading
   </Accordion>
 </AccordionGroup>
-
-## Next Steps
-
-Understanding RFQ-M integration:
-
-- [Fee Structure](/trading/fees) - Understanding all costs and economics
-- [RFQ-T Settlement](/trading/rfqt) - Alternative direct settlement method
-- [Market Maker Guide](/integration/market-makers) - How to provide liquidity for RFQ-M
