@@ -1,6 +1,6 @@
 ---
 title: "How Crest Works"
-description: "Deep dive into the technical architecture and mechanics of Crest's RFQ system"
+description: "Deep dive into the technical architecture and mechanics of Crest's trading system"
 ---
 
 Crest's architecture combines **off-chain quote aggregation** with **on-chain settlement**, providing users with the best of both worlds: competitive pricing through market maker competition and trustless execution through smart contracts.
@@ -60,12 +60,7 @@ interface QuoteRequest {
 }
 ```
 
-When a user requests a quote:
-1. **Input validation**: System validates token addresses, amounts, and user permissions
-2. **MM selection**: Algorithm selects relevant market makers based on:
-   - Historical performance
-   - Current connectivity status
-   - Available liquidity
+When a user requests a quote, the system validates token addresses, amounts, and user permissions.
 
 ### Phase 2: Market Maker Ping
 ```mermaid
@@ -97,14 +92,13 @@ Market makers receive:
 Market makers respond with:
 ```solidity
 struct QuoteResponse {
+    bytes32 quoteId;        // Unique quote identifier
     address user;           // User address
-    address marketMaker;    // MM address
     address tokenIn;        // Input token
     address tokenOut;       // Output token
     uint256 amountIn;       // Input amount
     uint256 amountOut;      // Output amount (MM's quote)
     uint256 expiry;         // Quote expiration timestamp
-    bytes32 quoteId;        // Unique quote identifier
     bytes signature;        // MM's cryptographic signature
 }
 ```
@@ -153,7 +147,7 @@ When dealing with native cBTC (Citrea's Bitcoin):
    - Maintains 1:1 backing with Bitcoin
 
 2. **Output Processing**:
-   - Market maker sends WCBTC to contract
+   - Contract transfers WCBTC from market maker
    - Contract unwraps WCBTC to native cBTC
    - Native cBTC sent directly to user
 
@@ -162,57 +156,3 @@ For standard ERC20 tokens:
 - Direct transfers between parties
 - Approval-based system (no custody)
 - Standard ERC20 safety checks
-
-## Security Model
-
-### Signature Validation
-Crest supports multiple signature types:
-
-<Tabs>
-  <Tab title="EIP712">
-    ```solidity
-    bytes32 hash = _hashTypedDataV4(
-        keccak256(abi.encode(
-            QUOTE_TYPEHASH,
-            params.user,
-            params.tokenIn,
-            params.tokenOut,
-            params.amountIn,
-            params.amountOut,
-            params.expiry,
-            params.quoteId
-        ))
-    );
-    ```
-  </Tab>
-  <Tab title="EIP1271">
-    ```solidity
-    try IERC1271(signer).isValidSignature(hash, signature) returns (
-        bytes4 magicValue
-    ) {
-        return magicValue == EIP1271_MAGIC_VALUE;
-    } catch {
-        return false;
-    }
-    ```
-  </Tab>
-  <Tab title="ETHSIGN">
-    ```solidity
-    address recoveredSigner = hash.recover(signature);
-    return signer == recoveredSigner;
-    ```
-  </Tab>
-</Tabs>
-
-### Protection Mechanisms
-- **Reentrancy guards** on all settlement functions
-- **Quote uniqueness** prevents double-spending
-- **Deadline enforcement** prevents stale quote execution
-- **Amount validation** ensures correct token transfers
-
-## Next Steps
-
-Now that you understand how Crest works, explore:
-- [User Flow](/introduction/user-flow) - Step-by-step trading process
-- [Smart Contracts](/contracts/overview) - Deep dive into contract architecture
-- [Integration Guide](/integration/market-makers) - How to integrate with Crest

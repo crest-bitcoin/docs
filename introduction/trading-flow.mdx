@@ -56,7 +56,6 @@ sequenceDiagram
   "tokenOut": "0x...",
   "amountIn": "1000000000000000000",
   "user": "0x...",
-  "deadline": 1700000000
 }
 ```
 
@@ -71,7 +70,6 @@ sequenceDiagram
   "amountOut": "1950000000",
   "expiry": 1700000300,
   "signature": "0x...",
-  "executionPrice": "1.945"
 }
 ```
 
@@ -147,43 +145,3 @@ sequenceDiagram
     5. Tokens settle according to quote terms
   </Tab>
 </Tabs>
-
-## Error Handling
-
-<AccordionGroup>
-  <Accordion title="Quote Expiration">
-    **Scenario**: Quote execution attempted after expiry
-
-    **Handling**:
-    - Frontend prevents execution of expired quotes
-    - Smart contract reverts with "Quote expired"
-    - User prompted to request fresh quote
-  </Accordion>
-
-  <Accordion title="Insufficient Balance">
-    **Scenario**: Insufficient tokens for trade
-
-    **Handling**:
-    - Balance checked before quote request
-    - Real-time balance updates
-    - Clear error messaging with required amount
-  </Accordion>
-
-  <Accordion title="Market Maker Unavailable">
-    **Scenario**: No quotes received in 500ms window
-
-    **Handling**:
-    - Retry with exponential backoff
-    - Fallback to alternative MMs
-    - User notification with status
-  </Accordion>
-
-  <Accordion title="Signature Validation">
-    **Scenario**: Invalid or mismatched signatures
-
-    **Handling**:
-    - Client-side signature verification
-    - Contract-level validation
-    - Clear error messaging for users
-  </Accordion>
-</AccordionGroup>

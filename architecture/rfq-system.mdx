@@ -43,9 +43,10 @@ The RFQ system follows these main steps:
 ### 1. User Request
 
 The process begins when a user submits a trade request to the RFQ engine. This request includes:
-- Trade direction (buy/sell)
-- Trade amount
 - User's wallet address
+- Token in address
+- Token out address
+- Amount in
 
 ### 2. Request Validation
 
@@ -57,7 +58,6 @@ Before processing the request, the RFQ engine validates:
 ### 3. Market Maker Pinging
 
 Once validated, the RFQ engine:
-- Identifies available market makers
 - Simultaneously pings all selected market makers via WebSocket
 - Includes trade details in the quote request
 - Starts a 500ms response window
@@ -76,8 +76,6 @@ The RFQ engine selects the best quote based on:
 
 1. **Price Competitiveness** (70%)
    - Best execution price for the user
-   - Includes all fees and costs
-   - Price impact consideration
 
 2. **Market Maker Reliability** (20%)
    - Historical fill success rate
