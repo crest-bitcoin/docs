@@ -58,7 +58,7 @@ function settleRFQT(
 
 ### Scenario 1: Native cBTC → ERC20 Token
 
-**Example: Selling 1 cBTC ($100,000) for USDC**
+**Example: Selling 1 cBTC ($100,000) for USD**
 
 ```mermaid
 sequenceDiagram
@@ -66,28 +66,28 @@ sequenceDiagram
     participant Settlement
     participant WCBTC
     participant MarketMaker
-    participant USDC
+    participant USD
 
-    Note over User,USDC: Scenario 1: Native cBTC → USDC
+    Note over User,USD: Scenario 1: Native cBTC → USD
     User->>Settlement: settleRFQT() + 1 cBTC ($100,000)
     Settlement->>WCBTC: deposit() 1 cBTC
     WCBTC->>Settlement: 1 WCBTC
     Settlement->>MarketMaker: 1 WCBTC
-    MarketMaker->>Settlement: 100,000 USDC
-    Settlement->>User: 99,700 USDC (minus 0.3% fee)
-    Settlement->>Settlement: Store 300 USDC fee
+    MarketMaker->>Settlement: 100,000 USD
+    Settlement->>User: 99,700 USD (minus 0.3% fee)
+    Settlement->>Settlement: Store 300 USD fee
 ```
 
 **Execution Flow:**
 1. User sends 1 cBTC ($100,000) with transaction (`msg.value`)
 2. Settlement contract wraps cBTC into WCBTC
-3. WCBTC transferred to market maker
-4. Market maker transfers 100,000 USDC to user (minus protocol fee)
-5. User receives 99,700 USDC (after 0.3% fee)
+3. Contract transfer WCBTC to market maker
+4. Contract transfers 100,000 USD from market maker to user (minus protocol fee)
+5. User receives 99,700 USD (after 0.3% fee)
 
 ### Scenario 2: ERC20 Token → Native cBTC
 
-**Example: Buying 1 cBTC with USDC**
+**Example: Buying 1 cBTC with USD**
 
 ```mermaid
 sequenceDiagram
@@ -95,13 +95,13 @@ sequenceDiagram
     participant Settlement
     participant WCBTC
     participant MarketMaker
-    participant USDC
+    participant USD
 
-    Note over User,USDC: Scenario 2: USDC → Native cBTC
-    User->>Settlement: Approve USDC spending
+    Note over User,USD: Scenario 2: USD → Native cBTC
+    User->>Settlement: Approve USD spending
     User->>Settlement: settleRFQT()
-    Settlement->>USDC: transferFrom(user, mm, 100,000 USDC)
-    USDC->>MarketMaker: 100,000 USDC
+    Settlement->>USD: transferFrom(user, mm, 100,000 USD)
+    USD->>MarketMaker: 100,000 USD
     MarketMaker->>Settlement: 1 WCBTC
     Settlement->>WCBTC: withdraw() 1 WCBTC
     WCBTC->>Settlement: 1 cBTC
@@ -110,29 +110,29 @@ sequenceDiagram
 ```
 
 **Execution Flow:**
-1. USDC (100,000) transferred from user to market maker
+1. USD (100,000) transferred from user to market maker
 2. Market maker sends 1 WCBTC to Settlement contract
 3. Settlement contract unwraps WCBTC to native cBTC
-4. 0.997 cBTC sent to user (minus protocol fee)
+4. 0.997 cBTC sent to user by contract (minus protocol fee)
 5. User receives native cBTC worth $99,700 (after 0.3% fee)
 
 ### Scenario 3: ERC20 → ERC20 Token
 
-**Example: USDC → WCBTC**
+**Example: USD → WCBTC**
 
 ```mermaid
 sequenceDiagram
     participant User
     participant Settlement
     participant MarketMaker
-    participant USDC
+    participant USD
     participant WCBTC
 
-    Note over User,WCBTC: Scenario 3: USDC → WCBTC
-    User->>Settlement: Approve USDC spending
+    Note over User,WCBTC: Scenario 3: USD → WCBTC
+    User->>Settlement: Approve USD spending
     User->>Settlement: settleRFQT()
-    Settlement->>USDC: transferFrom(user, mm, 100,000 USDC)
-    USDC->>MarketMaker: 100,000 USDC
+    Settlement->>USD: transferFrom(user, mm, 100,000 USD)
+    USD->>MarketMaker: 100,000 USD
     MarketMaker->>Settlement: 1 WCBTC
     Settlement->>User: 0.997 cBTC ($99,700)
     Settlement->>Settlement: Store 0.003 cBTC ($300) fee
@@ -229,7 +229,7 @@ Before executing RFQ-T trades, we verify:
   <Accordion title="1. Balance Check">
     **For Native cBTC:**
     - Verify wallet has sufficient cBTC balance for trade amount
-    - Add extra buffer for gas fees (approximately 0.0001 cBTC)
+    - Add extra buffer for gas fees
     - Example: For 1 cBTC trade ($100,000), ensure balance > 1.0001 cBTC
 
     **For ERC20 Tokens:**
@@ -254,13 +254,6 @@ Before executing RFQ-T trades, we verify:
     - Check current timestamp vs quote expiry
     - Quotes typically valid for 3-4 seconds
     - Request new quote if expired
-  </Accordion>
-
-  <Accordion title="4. Gas Estimation">
-    **Ensure sufficient cBTC for gas:**
-    - Check cBTC balance covers gas cost
-    - Consider current gas prices on Citrea
-    - Add 20% buffer for price fluctuations
   </Accordion>
 </AccordionGroup>
 

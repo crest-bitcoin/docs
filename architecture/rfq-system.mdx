@@ -3,7 +3,7 @@ title: "RFQ System"
 description: "Deep dive into Crest's ping-based Request for Quote system"
 ---
 
-Crest's Request for Quote (RFQ) system is the core of our trading infrastructure, designed to provide competitive pricing through market maker competition while maintaining the speed and efficiency required for seamless trading.
+Crest's Request for Quote (RFQ) system is the core of our trading infrastructure, designed to provide competitive pricing through market makers while maintaining the speed and efficiency required for seamless trading.
 
 ## How RFQ Works
 
@@ -58,7 +58,7 @@ Before processing the request, the RFQ engine validates:
 ### 3. Market Maker Pinging
 
 Once validated, the RFQ engine:
-- Simultaneously pings all selected market makers via WebSocket
+- Simultaneously pings all connected market makers via WebSocket
 - Includes trade details in the quote request
 - Starts a 500ms response window
 
@@ -74,15 +74,15 @@ During the 500ms window:
 
 The RFQ engine selects the best quote based on:
 
-1. **Price Competitiveness** (70%)
+1. **Price Competitiveness** (80%)
    - Best execution price for the user
 
-2. **Market Maker Reliability** (20%)
+2. **Market Maker Reliability** (15%)
    - Historical fill success rate
    - Quote consistency
    - Settlement reliability
 
-3. **Response Performance** (10%)
+3. **Response Performance** (5%)
    - Quote response time
    - Connection stability
    - System reliability

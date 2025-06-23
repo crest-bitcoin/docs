@@ -387,15 +387,3 @@ event RFQSettled(
     bool isRFQT                   // true for RFQ-T, false for RFQ-M
 );
 ```
-
-### Fee Management Events
-
-```solidity
-event FeeUpdated(uint256 oldFee, uint256 newFee);
-
-event FeesWithdrawn(
-    address indexed token,
-    address indexed to,
-    uint256 amount
-);
-```

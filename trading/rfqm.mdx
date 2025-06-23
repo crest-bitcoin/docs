@@ -60,7 +60,7 @@ function settleRFQM(
 
 ## Trade Execution Scenarios
 
-### Scenario 1: WCBTC → USDC
+### Scenario 1: WCBTC → USD
 
 ```mermaid
 sequenceDiagram
@@ -69,27 +69,27 @@ sequenceDiagram
     participant Settlement
     participant WCBTC
     participant MarketMaker
-    participant USDC
+    participant USD
 
-    Note over User,USDC: Scenario 1: WCBTC → USDC
+    Note over User,USD: Scenario 1: WCBTC → USD
     User->>Settlement: Approve WCBTC spending
     User->>Relayer: Sign quote for 1 WCBTC ($100,000)
     Relayer->>Settlement: settleRFQM() (pays gas)
     Settlement->>WCBTC: transferFrom(user, mm, 1 WCBTC)
     WCBTC->>MarketMaker: 1 WCBTC
-    MarketMaker->>Settlement: 100,000 USDC
-    Settlement->>User: 99,700 USDC (minus 0.3% fee)
-    Settlement->>Settlement: Store 300 USDC fee
+    MarketMaker->>Settlement: 100,000 USD
+    Settlement->>User: 99,700 USD (minus 0.3% fee)
+    Settlement->>Settlement: Store 300 USD fee
 ```
 
 **Execution Flow:**
 1. User signs quote for 1 WCBTC trade
 2. Relayer submits transaction and pays gas
 3. WCBTC transferred directly to market maker
-4. Market maker sends USDC to Settlement
-5. User receives 99,700 USDC (after 0.3% fee)
+4. Contract transfer USD from market maker to user
+5. User receives 99,700 USD (after 0.3% fee)
 
-### Scenario 2: USDC → Native cBTC
+### Scenario 2: USD → Native cBTC
 
 ```mermaid
 sequenceDiagram
@@ -98,14 +98,14 @@ sequenceDiagram
     participant Settlement
     participant WCBTC
     participant MarketMaker
-    participant USDC
+    participant USD
 
-    Note over User,USDC: Scenario 2: USDC → Native cBTC
-    User->>Settlement: Approve USDC spending
-    User->>Relayer: Sign quote for 100,000 USDC
+    Note over User,USD: Scenario 2: USD → Native cBTC
+    User->>Settlement: Approve USD spending
+    User->>Relayer: Sign quote for 100,000 USD
     Relayer->>Settlement: settleRFQM() (pays gas)
-    Settlement->>USDC: transferFrom(user, mm, 100,000 USDC)
-    USDC->>MarketMaker: 100,000 USDC
+    Settlement->>USD: transferFrom(user, mm, 100,000 USD)
+    USD->>MarketMaker: 100,000 USD
     MarketMaker->>Settlement: 1 WCBTC
     Settlement->>WCBTC: withdraw() 1 WCBTC
     Settlement->>User: 0.997 cBTC ($99,700)
@@ -113,13 +113,13 @@ sequenceDiagram
 ```
 
 **Execution Flow:**
-1. User signs quote for 100,000 USDC trade
+1. User signs quote for 100,000 USD trade
 2. Relayer executes settlement (pays gas)
-3. USDC transferred to market maker
+3. USD transferred to market maker
 4. Market maker sends WCBTC to Settlement
 5. Settlement unwraps WCBTC and sends native cBTC to user
 
-### Scenario 3: USDC → WCBTC
+### Scenario 3: USD → WCBTC
 
 ```mermaid
 sequenceDiagram
@@ -127,15 +127,15 @@ sequenceDiagram
     participant Relayer
     participant Settlement
     participant MarketMaker
-    participant USDC
+    participant USD
     participant WCBTC
 
-    Note over User,WCBTC: Scenario 3: USDC → WCBTC
-    User->>Settlement: Approve USDC spending
-    User->>Relayer: Sign quote for 100,000 USDC
+    Note over User,WCBTC: Scenario 3: USD → WCBTC
+    User->>Settlement: Approve USD spending
+    User->>Relayer: Sign quote for 100,000 USD
     Relayer->>Settlement: settleRFQM() (pays gas)
-    Settlement->>USDC: transferFrom(user, mm, 100,000 USDC)
-    USDC->>MarketMaker: 100,000 USDC
+    Settlement->>USD: transferFrom(user, mm, 100,000 USD)
+    USD->>MarketMaker: 100,000 USD
     MarketMaker->>Settlement: 1 WCBTC
     Settlement->>User: 0.997 WCBTC ($99,700)
     Settlement->>Settlement: Store 0.003 WCBTC ($300) fee
