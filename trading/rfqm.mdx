@@ -73,21 +73,22 @@ sequenceDiagram
 
     Note over User,USD: Scenario 1: WCBTC → USD
     User->>Settlement: Approve WCBTC spending
-    User->>Relayer: Sign quote for 1 WCBTC ($100,000)
+    User->>Relayer: Sign quote for 1 WCBTC
     Relayer->>Settlement: settleRFQM() (pays gas)
-    Settlement->>WCBTC: transferFrom(user, mm, 1 WCBTC)
+    Settlement-->>WCBTC: transferFrom(user, mm)
     WCBTC->>MarketMaker: 1 WCBTC
-    MarketMaker->>Settlement: 100,000 USD
-    Settlement->>User: 99,700 USD (minus 0.3% fee)
-    Settlement->>Settlement: Store 300 USD fee
+    Settlement-->>USD: transferFrom(mm, user)
+    USD->>User: 99,700 USD
+    Settlement-->>USD: transferFrom(mm, settlement)
+    USD->>Settlement: 300 USD
 ```
 
 **Execution Flow:**
-1. User signs quote for 1 WCBTC trade
-2. Relayer submits transaction and pays gas
-3. WCBTC transferred directly to market maker
-4. Contract transfer USD from market maker to user
-5. User receives 99,700 USD (after 0.3% fee)
+1. User approves WCBTC spending and signs quote
+2. Settlement uses transferFrom to:
+   - Move 1 WCBTC from user to MM
+   - Move 99,700 USD from MM to user
+   - Move 300 USD fee from MM to itself
 
 ### Scenario 2: USD → Native cBTC
 
@@ -104,20 +105,20 @@ sequenceDiagram
     User->>Settlement: Approve USD spending
     User->>Relayer: Sign quote for 100,000 USD
     Relayer->>Settlement: settleRFQM() (pays gas)
-    Settlement->>USD: transferFrom(user, mm, 100,000 USD)
+    Settlement-->>USD: transferFrom(user, mm)
     USD->>MarketMaker: 100,000 USD
-    MarketMaker->>Settlement: 1 WCBTC
-    Settlement->>WCBTC: withdraw() 1 WCBTC
-    Settlement->>User: 0.997 cBTC ($99,700)
-    Settlement->>Settlement: Store 0.003 cBTC ($300) fee
+    Settlement-->>WCBTC: transferFrom(mm, settlement)
+    WCBTC->>Settlement: 1 WCBTC
+    Settlement->>WCBTC: withdraw() 1 cBTC
+    Settlement->>User: 0.997 cBTC
 ```
 
 **Execution Flow:**
-1. User signs quote for 100,000 USD trade
-2. Relayer executes settlement (pays gas)
-3. USD transferred to market maker
-4. Market maker sends WCBTC to Settlement
-5. Settlement unwraps WCBTC and sends native cBTC to user
+1. User approves USD spending and signs quote
+2. Settlement uses transferFrom to move USD to MM
+3. Settlement gets WCBTC from MM, unwraps it:
+   - Sends 0.997 cBTC to user
+   - Keeps 0.003 cBTC as fee
 
 ### Scenario 3: USD → WCBTC
 
@@ -134,11 +135,12 @@ sequenceDiagram
     User->>Settlement: Approve USD spending
     User->>Relayer: Sign quote for 100,000 USD
     Relayer->>Settlement: settleRFQM() (pays gas)
-    Settlement->>USD: transferFrom(user, mm, 100,000 USD)
+    Settlement-->>USD: transferFrom(user, mm)
     USD->>MarketMaker: 100,000 USD
-    MarketMaker->>Settlement: 1 WCBTC
-    Settlement->>User: 0.997 WCBTC ($99,700)
-    Settlement->>Settlement: Store 0.003 WCBTC ($300) fee
+    Settlement-->>WCBTC: transferFrom(mm, user)
+    WCBTC->>User: 0.997 WCBTC
+    Settlement-->>WCBTC: transferFrom(mm, settlement)
+    WCBTC->>Settlement: 0.003 WCBTC
 ```
 
 ## Technical Implementation

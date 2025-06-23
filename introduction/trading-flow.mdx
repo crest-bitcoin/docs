@@ -14,7 +14,7 @@ sequenceDiagram
     participant RFQ Engine
     participant Market Makers
     participant Settlement
-    participant Blockchain
+    participant Citrea
 
     User->>Frontend: 1. Enter trade details
     Note over User,Frontend: Amount, tokens, direction
@@ -34,17 +34,17 @@ sequenceDiagram
         User->>Settlement: 8a. Execute settleRFQT
         Note over User,Settlement: User signs & pays gas
         Settlement->>Settlement: Validate MM signature
-        Settlement->>Blockchain: Execute swap
+        Settlement->>Citrea: Execute swap
     else RFQ-M (Relayer pays gas)
         User->>Frontend: 8b. Sign quote hash
         Frontend->>Settlement: Relayer executes settleRFQM
         Note over Frontend,Settlement: Relayer pays gas
         Settlement->>Settlement: Validate both signatures
-        Settlement->>Blockchain: Execute swap
+        Settlement->>Citrea: Execute swap
     end
 
-    Blockchain-->>User: 9. Trade completed
-    Note over Blockchain,User: Tokens transferred
+    Citrea-->>User: 9. Trade completed
+    Note over Citrea,User: Tokens transferred
 ```
 
 ## Quote Request & Response
