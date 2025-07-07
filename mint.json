@@ -37,7 +37,8 @@
       "pages": [
         "introduction/overview",
         "introduction/how-it-works",
-        "introduction/trading-flow"
+        "introduction/trading-flow",
+        "introduction/user-flow"
       ]
     },
     {
