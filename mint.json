@@ -31,6 +31,12 @@
       "url": "https://twitter.com/crest_btc"
     }
   ],
+  "api": {
+    "baseUrl": "https://api.crestapp.xyz",
+    "playground": {
+      "mode": "show"
+    }
+  },
   "tabs": [
     {
       "name": "Documentation",
