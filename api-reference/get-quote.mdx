@@ -1,0 +1,464 @@
+---
+title: 'Get Quote'
+api: 'POST /v1/quote'
+description: 'Request an aggregated quote for swapping or bridging tokens across chains'
+---
+
+## Endpoint
+
+```
+POST https://api.crestapp.xyz/v1/quote
+```
+
+Get the best quote for swapping tokens by aggregating rates from multiple providers. The API returns transaction data that you can execute directly from your application.
+
+## Request Body
+
+<ParamField body="fromToken" type="string" required>
+  Source token symbol or contract address
+
+  Examples: `"USDC"`, `"0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48"`
+</ParamField>
+
+<ParamField body="toToken" type="string" required>
+  Destination token symbol or contract address
+
+  Examples: `"ETH"`, `"0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2"`
+</ParamField>
+
+<ParamField body="fromChain" type="string" required>
+  Source blockchain network
+
+  Supported chains: `"ethereum"`, `"arbitrum"`, `"base"`, `"polygon"`
+</ParamField>
+
+<ParamField body="toChain" type="string" required>
+  Destination blockchain network
+
+  Supported chains: `"ethereum"`, `"arbitrum"`, `"base"`, `"polygon"`
+</ParamField>
+
+<ParamField body="amount" type="string" required>
+  The amount of input tokens to swap (in wei/smallest unit)
+
+  Example: `"1000000000000000000"` for 1 ETH
+</ParamField>
+
+<ParamField body="userAddress" type="string" required>
+  User's wallet address that will execute the transaction
+
+  Must be a valid Ethereum address
+</ParamField>
+
+<ParamField body="slippageTolerance" type="number" default="0.5">
+  Maximum acceptable slippage percentage
+
+  Range: `0.1` to `50`. Default: `0.5` (0.5%)
+</ParamField>
+
+## Response
+
+<ResponseField name="quoteId" type="string">
+  Unique identifier for this quote
+</ResponseField>
+
+<ResponseField name="fromToken" type="object">
+  Source token details
+
+  <Expandable title="properties">
+    <ResponseField name="address" type="string">
+      Token contract address
+    </ResponseField>
+
+    <ResponseField name="symbol" type="string">
+      Token symbol
+    </ResponseField>
+
+    <ResponseField name="decimals" type="number">
+      Token decimals
+    </ResponseField>
+
+    <ResponseField name="chainId" type="number">
+      Chain ID where the token exists
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+<ResponseField name="toToken" type="object">
+  Destination token details
+
+  <Expandable title="properties">
+    <ResponseField name="address" type="string">
+      Token contract address
+    </ResponseField>
+
+    <ResponseField name="symbol" type="string">
+      Token symbol
+    </ResponseField>
+
+    <ResponseField name="decimals" type="number">
+      Token decimals
+    </ResponseField>
+
+    <ResponseField name="chainId" type="number">
+      Chain ID where the token exists
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+<ResponseField name="fromChain" type="string">
+  Source blockchain network
+</ResponseField>
+
+<ResponseField name="toChain" type="string">
+  Destination blockchain network
+</ResponseField>
+
+<ResponseField name="fromAmount" type="string">
+  Input amount in base units (wei)
+</ResponseField>
+
+<ResponseField name="toAmount" type="string">
+  Expected output amount in base units (wei)
+</ResponseField>
+
+<ResponseField name="estimatedGas" type="string">
+  Estimated gas units for the transaction
+</ResponseField>
+
+<ResponseField name="provider" type="string">
+  The aggregator/provider offering the best rate
+</ResponseField>
+
+<ResponseField name="expiresAt" type="string">
+  ISO 8601 timestamp when the quote expires
+</ResponseField>
+
+<ResponseField name="steps" type="array">
+  Array of steps required to complete the swap (e.g., approvals, signatures, transactions)
+
+  <Expandable title="step object properties">
+    <ResponseField name="type" type="string">
+      Type of step: `"approval"`, `"signature"`, `"transaction"`
+    </ResponseField>
+
+    <ResponseField name="description" type="string">
+      Human-readable description of what this step does
+    </ResponseField>
+
+    <ResponseField name="tx" type="object">
+      Transaction data for this step (only present for `approval` and `transaction` types)
+
+      <Expandable title="tx properties">
+        <ResponseField name="to" type="string">
+          Contract address to send the transaction to
+        </ResponseField>
+
+        <ResponseField name="data" type="string">
+          Encoded transaction calldata
+        </ResponseField>
+
+        <ResponseField name="value" type="string">
+          ETH value to send with the transaction (in wei)
+        </ResponseField>
+
+        <ResponseField name="gasLimit" type="string">
+          Recommended gas limit for the transaction
+        </ResponseField>
+      </Expandable>
+    </ResponseField>
+
+    <ResponseField name="message" type="string">
+      Message to sign (only present for `signature` type steps)
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+## Example Request
+
+<CodeGroup>
+
+```javascript JavaScript
+const quote = await fetch('https://api.crestapp.xyz/v1/quote', {
+  method: 'POST',
+  headers: {
+    'Content-Type': 'application/json',
+    // 'Authorization': 'Bearer YOUR_API_KEY' // Coming soon
+  },
+  body: JSON.stringify({
+    fromToken: 'USDC',
+    toToken: 'ETH',
+    fromChain: 'ethereum',
+    toChain: 'ethereum',
+    amount: '1000',
+    userAddress: '0x742d35Cc6634C0532925a3b844Bc9e7595f0bEb',
+    slippageTolerance: 0.5
+  })
+}).then(res => res.json());
+
+console.log(quote);
+```
+
+```python Python
+import requests
+
+url = 'https://api.crestapp.xyz/v1/quote'
+payload = {
+    'fromToken': 'USDC',
+    'toToken': 'ETH',
+    'fromChain': 'ethereum',
+    'toChain': 'ethereum',
+    'amount': '1000',
+    'userAddress': '0x742d35Cc6634C0532925a3b844Bc9e7595f0bEb',
+    'slippageTolerance': 0.5
+}
+
+response = requests.post(url, json=payload)
+quote = response.json()
+print(quote)
+```
+
+```bash cURL
+curl -X POST https://api.crestapp.xyz/v1/quote \
+  -H "Content-Type: application/json" \
+  -d '{
+    "fromToken": "USDC",
+    "toToken": "ETH",
+    "fromChain": "ethereum",
+    "toChain": "ethereum",
+    "amount": "1000",
+    "userAddress": "0x742d35Cc6634C0532925a3b844Bc9e7595f0bEb",
+    "slippageTolerance": 0.5
+  }'
+```
+
+```typescript TypeScript
+const quote = await fetch('https://api.crestapp.xyz/v1/quote', {
+  method: 'POST',
+  headers: {
+    'Content-Type': 'application/json',
+    // 'Authorization': 'Bearer YOUR_API_KEY' // Coming soon
+  },
+  body: JSON.stringify({
+    fromToken: 'USDC',
+    toToken: 'ETH',
+    fromChain: 'ethereum',
+    toChain: 'ethereum',
+    amount: '1000',
+    userAddress: '0x742d35Cc6634C0532925a3b844Bc9e7595f0bEb',
+    slippageTolerance: 0.5
+  })
+});
+
+const data = await quote.json();
+console.log(data);
+```
+
+```go Go
+package main
+
+import (
+    "bytes"
+    "encoding/json"
+    "fmt"
+    "net/http"
+)
+
+func main() {
+    url := "https://api.crestapp.xyz/v1/quote"
+
+    payload := map[string]interface{}{
+        "fromToken": "USDC",
+        "toToken": "ETH",
+        "fromChain": "ethereum",
+        "toChain": "ethereum",
+        "amount": "1000",
+        "userAddress": "0x742d35Cc6634C0532925a3b844Bc9e7595f0bEb",
+        "slippageTolerance": 0.5,
+    }
+
+    jsonData, _ := json.Marshal(payload)
+    resp, err := http.Post(url, "application/json", bytes.NewBuffer(jsonData))
+    if err != nil {
+        panic(err)
+    }
+    defer resp.Body.Close()
+
+    var quote map[string]interface{}
+    json.NewDecoder(resp.Body).Decode(&quote)
+    fmt.Println(quote)
+}
+```
+
+</CodeGroup>
+
+## Example Response
+
+<CodeGroup>
+
+```json 200 - Success (Simple Swap)
+{
+  "quoteId": "0x1a2b3c4d5e6f7g8h9i0j",
+  "fromToken": {
+    "address": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
+    "symbol": "USDC",
+    "decimals": 6,
+    "chainId": 1
+  },
+  "toToken": {
+    "address": "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2",
+    "symbol": "WETH",
+    "decimals": 18,
+    "chainId": 1
+  },
+  "fromChain": "ethereum",
+  "toChain": "ethereum",
+  "fromAmount": "1000000000",
+  "toAmount": "420000000000000000",
+  "estimatedGas": "350000",
+  "provider": "1inch",
+  "expiresAt": "2024-01-15T12:35:00Z",
+  "steps": [
+    {
+      "type": "approval",
+      "description": "Approve USDC spending",
+      "tx": {
+        "to": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
+        "data": "0x095ea7b3000000000000000000000000...",
+        "value": "0",
+        "gasLimit": "50000"
+      }
+    },
+    {
+      "type": "transaction",
+      "description": "Execute swap",
+      "tx": {
+        "to": "0x1111111254EEB25477B68fb85Ed929f73A960582",
+        "data": "0x12aa3caf000000000000000000000000...",
+        "value": "0",
+        "gasLimit": "300000"
+      }
+    }
+  ]
+}
+```
+
+```json 200 - Success (With Signature)
+{
+  "quoteId": "0xabc123def456789",
+  "fromToken": {
+    "address": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
+    "symbol": "USDC",
+    "decimals": 6,
+    "chainId": 1
+  },
+  "toToken": {
+    "address": "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2",
+    "symbol": "WETH",
+    "decimals": 18,
+    "chainId": 1
+  },
+  "fromChain": "ethereum",
+  "toChain": "ethereum",
+  "fromAmount": "1000000000",
+  "toAmount": "420000000000000000",
+  "estimatedGas": "250000",
+  "provider": "CowSwap",
+  "expiresAt": "2024-01-15T12:35:00Z",
+  "steps": [
+    {
+      "type": "signature",
+      "description": "Sign order message",
+      "message": "{\"sellToken\":\"0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48\",\"buyToken\":\"0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2\"...}"
+    },
+    {
+      "type": "transaction",
+      "description": "Execute signed order",
+      "tx": {
+        "to": "0x9008D19f58AAbD9eD0D60971565AA8510560ab41",
+        "data": "0x13d79a0b000000000000000000000000...",
+        "value": "0",
+        "gasLimit": "250000"
+      }
+    }
+  ]
+}
+```
+
+```json 400 - Bad Request
+{
+  "error": {
+    "code": "INVALID_PARAMETERS",
+    "message": "Invalid token address provided",
+    "details": {
+      "field": "fromToken",
+      "reason": "Must be a valid ERC-20 token address or symbol"
+    }
+  }
+}
+```
+
+```json 404 - Not Found
+{
+  "error": {
+    "code": "TOKEN_NOT_FOUND",
+    "message": "Token not found on the specified chain",
+    "details": {
+      "token": "ABC",
+      "chain": "ethereum"
+    }
+  }
+}
+```
+
+```json 503 - Service Unavailable
+{
+  "error": {
+    "code": "INSUFFICIENT_LIQUIDITY",
+    "message": "No liquidity available for this trading pair",
+    "details": {
+      "fromToken": "USDC",
+      "toToken": "RARE_TOKEN",
+      "suggestedAlternatives": ["ETH", "USDT"]
+    }
+  }
+}
+```
+
+</CodeGroup>
+
+## Error Codes
+
+| Code | Description |
+|------|-------------|
+| `INVALID_PARAMETERS` | Request parameters are invalid or missing |
+| `INVALID_TOKEN` | Token address or symbol is not recognized |
+| `TOKEN_NOT_FOUND` | Token does not exist on the specified chain |
+| `UNSUPPORTED_CHAIN` | Blockchain network is not supported |
+| `INSUFFICIENT_LIQUIDITY` | No available liquidity for the trading pair |
+| `AMOUNT_TOO_LOW` | Swap amount is below the minimum threshold |
+| `AMOUNT_TOO_HIGH` | Swap amount exceeds maximum threshold |
+| `RATE_LIMIT_EXCEEDED` | Too many requests, please slow down |
+| `INTERNAL_ERROR` | Internal server error, please try again |
+
+## Notes
+
+<Note>
+**Quote Expiration**: Quotes are typically valid for 30 seconds. Always check the `expiresAt` field and request a new quote if needed.
+</Note>
+
+<Note>
+**Step Execution**: The API returns a `steps` array that you must execute in order. Each step may be an approval, signature, or transaction. Execute all steps sequentially using a Web3 library (ethers.js, web3.js, viem, etc.).
+</Note>
+
+<Warning>
+**Slippage Protection**: Transaction data includes slippage protection based on your `slippageTolerance` parameter. Transactions will revert if the actual rate differs more than the specified tolerance.
+</Warning>
+
+<Tip>
+**Multiple Steps**: Depending on the provider and swap type, you may need to execute multiple steps (e.g., token approval before swap, or signature before executing a gasless order). Always iterate through the `steps` array.
+</Tip>
+
+<Tip>
+**Cross-Chain Swaps**: When `fromChain` and `toChain` differ, the API will return bridge transaction steps. Cross-chain swaps may take longer to complete (minutes to hours depending on the bridge).
+</Tip>

@@ -31,42 +31,28 @@
       "url": "https://twitter.com/crest_btc"
     }
   ],
+  "tabs": [
+    {
+      "name": "Documentation",
+      "url": "documentation"
+    },
+    {
+      "name": "API Reference",
+      "url": "api-reference"
+    }
+  ],
   "navigation": [
     {
-      "group": "Introduction",
+      "group": "Get Started",
       "pages": [
-        "introduction/overview",
-        "introduction/how-it-works",
-        "introduction/trading-flow",
-        "introduction/user-flow"
+        "documentation/introduction",
+        "documentation/quickstart"
       ]
     },
     {
-      "group": "Architecture",
+      "group": "Quote API",
       "pages": [
-        "architecture/rfq-system",
-        "architecture/citrea-integration"
-      ]
-    },
-    {
-      "group": "Smart Contracts",
-      "pages": [
-        "contracts/overview",
-        "contracts/settlement",
-        "contracts/wcbtc"
-      ]
-    },
-    {
-      "group": "Trading Mechanisms",
-      "pages": [
-        "trading/rfqt",
-        "trading/rfqm"
-      ]
-    },
-    {
-      "group": "Integration",
-      "pages": [
-        "integration/market-makers"
+        "api-reference/get-quote"
       ]
     }
   ],
