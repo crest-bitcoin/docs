@@ -32,7 +32,7 @@
     }
   ],
   "api": {
-    "baseUrl": "https://api.crestapp.xyz",
+    "baseUrl": "https://crestgateway.up.railway.app",
     "playground": {
       "mode": "show"
     }
